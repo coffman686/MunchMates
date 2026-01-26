@@ -1,6 +1,6 @@
-# 🥗 Munch Mates — EECS 581 Project 3
-**Capstone Project – Fall 2025**  
-**Team 26 • University of Kansas • EECS 581: Software Engineering II**  
+# 🥗 Munch Mates
+**Capstone Project – Fall 2025 -> Spring 2026**  
+**Team 17 • University of Kansas • EECS 582: Computer Science Capstone**  
 **The video demo for this project can be found here: [MunchMates Demo](https://drive.google.com/file/d/1emgFaO0tZ4wGwE9JFasXCoqDHG3-TNd6/view?usp=sharing)**  
 
 ---
