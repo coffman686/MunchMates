@@ -100,6 +100,12 @@ Brainstorm ideas for the next iteration. Not organized - just collecting thought
 
 ---
 
+## CI/CD Development
+
+- **Basic CI/CD workflow** - Have a basic pipeline from commit -> deployment once we get all the hosting figured out (can use GitHub actions)
+
+---
+
 ## Questions to Answer
 
 - What database? PostgreSQL vs MongoDB vs Supabase?
