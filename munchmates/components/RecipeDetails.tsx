@@ -1,13 +1,14 @@
 // RecipeDetails Component
 // Displays full recipe information inside the slideover or standalone view.
-// Fetches recipe data (information + instructions) from Spoonacular API routes.
+// Fetches recipe data by checking the local DB first (custom recipes), then
+// falling back to Spoonacular API routes if not found locally.
 // Handles loading states, error states, and API-limit errors gracefully.
-// Provides a localStorage-based "Save Recipe" toggle using a unique LOCAL_KEY.
+// Provides a "Save Recipe" toggle backed by the saved-recipes API.
 // Renders summary, badges, stats, ingredients, and step-by-step instructions.
+// Custom recipes use plain-text instructions (no structured steps from Spoonacular).
 // Automatically cleans HTML from summary text and falls back to raw HTML instructions.
 // Supports being closed via router.back() or parent callback (onClose).
 // Consumes recipeId passed in by parent route or intercepted slideover.
-// Intended as UI-only component; persistent saving should later be replaced with a DB.
 
 "use client";
 
@@ -27,22 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useRouter } from "next/navigation";
-
-const LOCAL_KEY = "saved-recipes";
-
-// Load and save local recipes to local storage
-const loadLocalSavedRecipes = () => {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
-  } catch {
-    return [];
-  }
-};
-
-const saveLocalSavedRecipes = (recipes: any[]) => {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(recipes));
-};
-
+import { authedFetch } from "@/lib/authedFetch";
 
 type RecipeDetailsProps = {
   recipeId: string | null;
@@ -103,34 +89,44 @@ export default function RecipeDetails({ recipeId, onClose }: RecipeDetailsProps)
       setError(null);
 
       try {
-        // Info + instructions in parallel
-        const [infoRes, instructionsRes] = await Promise.all([
-          fetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
-          fetch(`/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`),
-        ]);
+        // Try local DB first — if the recipe exists as a custom recipe, use it.
+        // Otherwise fall back to Spoonacular. This avoids relying on ID ranges
+        // since Spoonacular IDs can overlap with custom recipe IDs.
+        const customRes = await authedFetch(`/api/recipes/create?id=${recipeId}`);
+        const isCustom = customRes.ok;
 
-        // Handle recipe info and possible API-limit errors
-        let infoData: any = null;
-        if (infoRes.ok) {
-          infoData = await infoRes.json();
-          setRecipeInfo(infoData);
+        if (isCustom) {
+          // Custom recipe found in local DB
+          const data = await customRes.json();
+          setRecipeInfo(data.recipe);
+          // No structured instructions for custom recipes — plain text fallback used
         } else {
-          try {
-            infoData = await infoRes.json();
-          } catch {
-            // ignore JSON parse error
-          }
-          if (infoRes.status === 402 || infoData?.error?.includes("limit")) {
-            throw new Error("API daily limit reached. Please try again tomorrow.");
-          }
-          throw new Error(infoData?.error || "Failed to fetch recipe details");
-        }
+          // Not a custom recipe — fetch from Spoonacular
+          const [infoRes, instructionsRes] = await Promise.all([
+            fetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
+            fetch(`/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`),
+          ]);
 
-        // Structured instructions
-        if (instructionsRes.ok) {
-          const instructionsData = await instructionsRes.json();
-          // API returns { instructions: [{ name, steps: [...] }, ...] }
-          setInstructions(instructionsData.instructions || []);
+          let infoData: any = null;
+          if (infoRes.ok) {
+            infoData = await infoRes.json();
+            setRecipeInfo(infoData);
+          } else {
+            try {
+              infoData = await infoRes.json();
+            } catch {
+              // ignore JSON parse error
+            }
+            if (infoRes.status === 402 || infoData?.error?.includes("limit")) {
+              throw new Error("API daily limit reached. Please try again tomorrow.");
+            }
+            throw new Error(infoData?.error || "Failed to fetch recipe details");
+          }
+
+          if (instructionsRes.ok) {
+            const instructionsData = await instructionsRes.json();
+            setInstructions(instructionsData.instructions || []);
+          }
         }
       } catch (err) {
         console.error("Error fetching recipe:", err);
@@ -145,35 +141,54 @@ export default function RecipeDetails({ recipeId, onClose }: RecipeDetailsProps)
 
   useEffect(() => {
     if (!recipeId) return;
+    let cancelled = false;
 
-    const saved = loadLocalSavedRecipes();
-    setIsSaved(saved.some((r: any) => String(r.recipeId) === String(recipeId)));
+    const checkSaved = async () => {
+      try {
+        const res = await authedFetch('/api/recipes/saved');
+        if (cancelled) return;
+        if (res.status === 401) {
+          setTimeout(checkSaved, 300);
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          const recipes = data.recipes || [];
+          setIsSaved(recipes.some((r: any) => String(r.recipeId) === String(recipeId)));
+        }
+      } catch {
+        // silently fail
+      }
+    };
+    checkSaved();
+    return () => { cancelled = true; };
   }, [recipeId]);
 
 
-  const handleSaveToggle = () => {
+  const handleSaveToggle = async () => {
     if (!recipeInfo) return;
 
-    const saved = loadLocalSavedRecipes();
-
     if (isSaved) {
-      // Remove from saved list
-      const updated = saved.filter(
-          (r: any) => String(r.recipeId) !== String(recipeInfo.id)
-      );
-      saveLocalSavedRecipes(updated);
       setIsSaved(false);
+      try {
+        await authedFetch(`/api/recipes/saved?recipeId=${recipeInfo.id}`, { method: 'DELETE' });
+      } catch {
+        setIsSaved(true);
+      }
     } else {
-      // Add to saved list
-      const newEntry = {
-        recipeId: recipeInfo.id,
-        recipeName: recipeInfo.title,
-        recipeImage: recipeInfo.image,
-        savedAt: new Date().toISOString(),
-      };
-      const updated = [...saved, newEntry];
-      saveLocalSavedRecipes(updated);
       setIsSaved(true);
+      try {
+        await authedFetch('/api/recipes/saved', {
+          method: 'POST',
+          body: JSON.stringify({
+            recipeId: recipeInfo.id,
+            recipeName: recipeInfo.title,
+            recipeImage: recipeInfo.image,
+          }),
+        });
+      } catch {
+        setIsSaved(false);
+      }
     }
   };
 

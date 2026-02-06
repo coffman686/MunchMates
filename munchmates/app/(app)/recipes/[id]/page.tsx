@@ -3,6 +3,10 @@
 // Inputs: recipeId extracted from the URL path
 // Outputs: Full recipe view including metadata, ingredients, and instructions
 // Fetches recipe information, instructions, and saved-status
+// Supports both Spoonacular recipes and custom user-created recipes.
+// Checks the local DB first — if found, it's a custom recipe fetched from
+// /api/recipes/create. Otherwise falls back to Spoonacular.
+// Custom recipes use plain-text instructions (no structured steps).
 // Allows user to save/unsave recipes
 // Handles redirect if route matches /recipes/saved
 
@@ -92,32 +96,54 @@ const RecipeDetailPage = () => {
       setError(null);
 
       try {
-        // Fetch recipe information and instructions in parallel
-        const [infoRes, instructionsRes, savedRes] = await Promise.all([
-          fetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
-          fetch(`/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`),
-          authedFetch("/api/recipes/saved"),
-        ]);
+        // Try local DB first — if the recipe exists as a custom recipe, use it.
+        // Otherwise fall back to Spoonacular. This avoids relying on ID ranges
+        // since Spoonacular IDs can overlap with custom recipe IDs.
+        const customRes = await authedFetch(`/api/recipes/create?id=${recipeId}`);
+        const isCustom = customRes.ok;
 
-        if (infoRes.ok) {
-          const infoData = await infoRes.json();
-          setRecipe(infoData);
-        } else {
-          setError("Failed to load recipe information");
-        }
+        if (isCustom) {
+          // Custom recipe found in local DB
+          const [data, savedRes] = await Promise.all([
+            customRes.json(),
+            authedFetch("/api/recipes/saved"),
+          ]);
+          setRecipe(data.recipe);
 
-        if (instructionsRes.ok) {
-          const instructionsData = await instructionsRes.json();
-          // Instructions come as an array of instruction groups
-          if (instructionsData.instructions && instructionsData.instructions.length > 0) {
-            setInstructions(instructionsData.instructions[0]?.steps || []);
+          // No structured instructions for custom recipes — they use plain text
+
+          if (savedRes.ok) {
+            const savedData = await savedRes.json();
+            const savedIds = new Set(savedData.recipes.map((r: any) => r.recipeId));
+            setIsSaved(savedIds.has(parseInt(recipeId)));
           }
-        }
+        } else {
+          // Not a custom recipe — fetch from Spoonacular
+          const [infoRes, instructionsRes, savedRes] = await Promise.all([
+            fetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
+            fetch(`/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`),
+            authedFetch("/api/recipes/saved"),
+          ]);
 
-        if (savedRes.ok) {
-          const savedData = await savedRes.json();
-          const savedIds = new Set(savedData.recipes.map((r: any) => r.recipeId));
-          setIsSaved(savedIds.has(parseInt(recipeId)));
+          if (infoRes.ok) {
+            const infoData = await infoRes.json();
+            setRecipe(infoData);
+          } else {
+            setError("Failed to load recipe information");
+          }
+
+          if (instructionsRes.ok) {
+            const instructionsData = await instructionsRes.json();
+            if (instructionsData.instructions && instructionsData.instructions.length > 0) {
+              setInstructions(instructionsData.instructions[0]?.steps || []);
+            }
+          }
+
+          if (savedRes.ok) {
+            const savedData = await savedRes.json();
+            const savedIds = new Set(savedData.recipes.map((r: any) => r.recipeId));
+            setIsSaved(savedIds.has(parseInt(recipeId)));
+          }
         }
       } catch (err) {
         console.error("Error fetching recipe:", err);

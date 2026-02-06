@@ -1,0 +1,185 @@
+// prisma/schema.prisma
+// MunchMates database schema — models all user data previously stored in memory or JSON files
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Keycloak user reference — created on first interaction with any API route
+model User {
+  id        String   @id // Keycloak sub claim
+  createdAt DateTime @default(now())
+
+  profile               UserProfile?
+  savedRecipes          SavedRecipe[]
+  customRecipes         CustomRecipe[]
+  mealPlans             WeeklyMealPlan[]
+  collectionMemberships CollectionMember[]
+  pantryItems           PantryItem[]
+  groceryItems          GroceryItem[]
+  groceryCategories     GroceryCategory[]
+}
+
+// User dietary preferences (from profile route)
+model UserProfile {
+  id               Int      @id @default(autoincrement())
+  userId           String   @unique
+  favoriteCuisines String   @default("")
+  diets            String[] @default([])
+  intolerances     String[] @default([])
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Spoonacular or custom recipe bookmarks (from saved recipes route)
+model SavedRecipe {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  recipeId    Int
+  recipeName  String
+  recipeImage String?
+  savedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+}
+
+// User-created recipes (from custom recipes route)
+// IDs start at 100000 to avoid conflicts with Spoonacular recipe IDs
+model CustomRecipe {
+  id             Int      @id @default(autoincrement())
+  userId         String
+  title          String
+  servings       Int      @default(1)
+  readyInMinutes Int      @default(30)
+  dishTypes      String[] @default(["main course"])
+  cuisines       String[] @default(["American"])
+  ingredients    String[]
+  instructions   String
+  image          String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Shared recipe collections
+model SharedCollection {
+  id            String   @id @default(cuid())
+  name          String
+  description   String   @default("")
+  createdBy     String
+  createdByName String
+  createdAt     DateTime @default(now())
+
+  members CollectionMember[]
+  recipes CollectionRecipe[]
+}
+
+// Collection membership with role-based access
+model CollectionMember {
+  id           Int      @id @default(autoincrement())
+  collectionId String
+  userId       String
+  userName     String
+  role         String   @default("viewer") // owner | editor | viewer
+  joinedAt     DateTime @default(now())
+
+  collection SharedCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, userId])
+}
+
+// Recipes within a shared collection
+model CollectionRecipe {
+  id           Int      @id @default(autoincrement())
+  collectionId String
+  recipeId     Int
+  recipeName   String
+  addedBy      String
+  addedByName  String
+  addedAt      DateTime @default(now())
+
+  collection SharedCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, recipeId])
+}
+
+// Weekly meal plan header
+model WeeklyMealPlan {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  weekStart String   // ISO date string (YYYY-MM-DD) of Monday
+
+  meals MealEntry[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+}
+
+// Individual meal entries within a weekly plan
+model MealEntry {
+  id               Int      @id @default(autoincrement())
+  mealPlanId       Int
+  date             String   // ISO date string (YYYY-MM-DD)
+  mealType         String   // breakfast | lunch | dinner
+  entryId          String   // client-generated ID (meal-<timestamp>-<random>)
+  recipeId         Int
+  title            String
+  image            String?
+  servings         Int
+  originalServings Int
+
+  mealPlan WeeklyMealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([mealPlanId, date, mealType])
+}
+
+// Pantry - user's ingredient inventory
+model PantryItem {
+  id         Int       @id @default(autoincrement())
+  userId     String
+  name       String
+  quantity   String
+  category   String
+  expiryDate DateTime?
+  addedAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name]) // Prevent duplicate items per user
+}
+
+// Grocery List - shopping list items
+model GroceryItem {
+  id           Int      @id @default(autoincrement())
+  userId       String
+  name         String
+  quantity     String?
+  category     String
+  completed    Boolean  @default(false)
+  fromMealPlan Boolean  @default(false)
+  addedAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name]) // Prevent duplicate items per user
+}
+
+// User's custom grocery categories
+model GroceryCategory {
+  id        Int    @id @default(autoincrement())
+  userId    String
+  name      String
+  sortOrder Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name]) // Prevent duplicate categories per user
+}

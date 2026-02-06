@@ -4,7 +4,10 @@
 // and respects user dietary preferences/intolerances pulled from their profile.
 // Integrates with Spoonacular search API for external recipes and a custom
 // "Create Recipe" dialog that posts user-authored recipes to /api/recipes/create.
-// Also manages local favorite recipes via `saved-recipes` in localStorage so users
+// Displays user's custom recipes in a "My Recipes" section above search results,
+// loaded from /api/recipes/create on mount. Newly created recipes are added to
+// the grid immediately without requiring a page refresh.
+// Also manages favorite recipes via the saved-recipes API so users
 // can toggle hearts in the grid and access them later from the Saved Recipes view.
 
 'use client';
@@ -27,9 +30,6 @@ import { Search, Plus, Clock, Users, ChefHat, Filter, Star, Heart, X } from 'luc
 import { useRouter } from 'next/navigation';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { getDiets, getIntolerances } from '@/components/ingredients/Dietary';
-
-// localStorage key for saved recipes
-const SAVED_RECIPES_STORAGE_KEY = 'saved-recipes';
 
 type SavedRecipe = {
     recipeId: number;
@@ -223,32 +223,71 @@ const Recipes = () => {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // state for user-created custom recipes, loaded from DB on mount
+    const [customRecipes, setCustomRecipes] = useState<Recipe[]>([]);
+
     const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
     const [savedRecipeIds, setSavedRecipeIds] = useState<Set<number>>(new Set());
-    const [isLoaded, setIsLoaded] = useState(false);
 
-    // Load saved recipes from localStorage on mount
+    // Load saved recipes from API on mount
     useEffect(() => {
-        const savedData = localStorage.getItem(SAVED_RECIPES_STORAGE_KEY);
-        if (savedData) {
+        let cancelled = false;
+        const loadSaved = async () => {
             try {
-                const recipes: SavedRecipe[] = JSON.parse(savedData);
-                setSavedRecipes(recipes);
-                setSavedRecipeIds(new Set(recipes.map(r => r.recipeId)));
+                const res = await authedFetch('/api/recipes/saved');
+                if (cancelled) return;
+                if (res.status === 401) {
+                    setTimeout(loadSaved, 300);
+                    return;
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    const recipes: SavedRecipe[] = data.recipes || [];
+                    setSavedRecipes(recipes);
+                    setSavedRecipeIds(new Set(recipes.map(r => r.recipeId)));
+                }
             } catch (error) {
                 console.error('Error loading saved recipes:', error);
             }
-        }
-        setIsLoaded(true);
+        };
+        loadSaved();
+        return () => { cancelled = true; };
     }, []);
 
-    // Save to localStorage whenever savedRecipes changes
+    // Load user's custom recipes from DB on mount
+    // Maps DB response to the Recipe type used by the grid cards
+    // Retries on 401 to handle Keycloak token not yet ready
     useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(SAVED_RECIPES_STORAGE_KEY, JSON.stringify(savedRecipes));
-            setSavedRecipeIds(new Set(savedRecipes.map(r => r.recipeId)));
-        }
-    }, [savedRecipes, isLoaded]);
+        let cancelled = false;
+        const loadCustom = async () => {
+            try {
+                const res = await authedFetch('/api/recipes/create');
+                if (cancelled) return;
+                if (res.status === 401) {
+                    setTimeout(loadCustom, 300);
+                    return;
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    const recipes = (data.recipes || []).map((r: any) => ({
+                        id: r.id,
+                        title: r.title,
+                        image: r.image || '',
+                        score: 0,
+                        servings: r.servings,
+                        readyInMinutes: r.readyInMinutes,
+                        cuisines: r.cuisines || [],
+                        dishTypes: r.dishTypes || [],
+                    }));
+                    setCustomRecipes(recipes);
+                }
+            } catch (error) {
+                console.error('Error loading custom recipes:', error);
+            }
+        };
+        loadCustom();
+        return () => { cancelled = true; };
+    }, []);
 
     const handleAddIngredient = () => {
         if (newIngredient.trim()) {
@@ -308,6 +347,22 @@ const Recipes = () => {
 
             const data = await response.json();
             console.log('Recipe created successfully:', data);
+
+            // Add to custom recipes list so it appears in the "My Recipes" grid
+            // immediately without needing a page refresh
+            if (data.recipe) {
+                setCustomRecipes(prev => [...prev, {
+                    id: data.recipe.id,
+                    title: data.recipe.title,
+                    image: data.recipe.image || '',
+                    score: 0,
+                    servings: data.recipe.servings,
+                    readyInMinutes: data.recipe.readyInMinutes,
+                    cuisines: data.recipe.cuisines || [],
+                    dishTypes: data.recipe.dishTypes || [],
+                }]);
+            }
+
             // Close dialog and reset form
             setShowCreateDialog(false);
             setRecipeFormData({
@@ -335,11 +390,8 @@ const Recipes = () => {
         setShowCreateDialog(true);
     };
 
-    const handleSaveRecipe = (recipeId: number, recipeName: string, recipeImage?: string) => {
-        // Check if already saved
-        if (savedRecipeIds.has(recipeId)) {
-            return;
-        }
+    const handleSaveRecipe = async (recipeId: number, recipeName: string, recipeImage?: string) => {
+        if (savedRecipeIds.has(recipeId)) return;
 
         const newSavedRecipe: SavedRecipe = {
             recipeId,
@@ -349,10 +401,31 @@ const Recipes = () => {
         };
 
         setSavedRecipes(prev => [...prev, newSavedRecipe]);
+        setSavedRecipeIds(prev => new Set(prev).add(recipeId));
+
+        try {
+            await authedFetch('/api/recipes/saved', {
+                method: 'POST',
+                body: JSON.stringify({ recipeId, recipeName, recipeImage }),
+            });
+        } catch (error) {
+            console.error('Error saving recipe:', error);
+        }
     };
 
-    const handleRemoveSavedRecipe = (recipeId: number) => {
+    const handleRemoveSavedRecipe = async (recipeId: number) => {
         setSavedRecipes(prev => prev.filter(r => r.recipeId !== recipeId));
+        setSavedRecipeIds(prev => {
+            const next = new Set(prev);
+            next.delete(recipeId);
+            return next;
+        });
+
+        try {
+            await authedFetch(`/api/recipes/saved?recipeId=${recipeId}`, { method: 'DELETE' });
+        } catch (error) {
+            console.error('Error removing saved recipe:', error);
+        }
     };
 
     // main render for Recipes component
@@ -440,7 +513,87 @@ const Recipes = () => {
                                     </Select>
 
                                 </div>
-                                {/* Recipe Grid */}
+                                {/* My Custom Recipes — shows user-created recipes from DB */}
+                                {/* Displayed above search results, hidden when empty */}
+                                {customRecipes.length > 0 && (
+                                    <div className="space-y-4">
+                                        <h2 className="text-lg font-semibold flex items-center gap-2">
+                                            <ChefHat className="h-5 w-5" />
+                                            My Recipes
+                                        </h2>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                            {customRecipes.map(recipe => (
+                                                <Card key={recipe.id} className="flex flex-col overflow-hidden hover:shadow-lg transition-shadow duration-300">
+                                                    <div className="h-48 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
+                                                        {recipe.image ? (
+                                                            <img
+                                                                src={recipe.image}
+                                                                alt={recipe.title}
+                                                                className="h-full w-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <ChefHat className="h-16 w-16 text-muted-foreground/50" />
+                                                        )}
+                                                    </div>
+                                                    <CardHeader className="pb-3 flex-1">
+                                                        <CardTitle className="text-lg leading-tight">
+                                                            {recipe.title}
+                                                        </CardTitle>
+                                                        <CardDescription className="line-clamp-2">
+                                                            {recipe.dishTypes.map(dishType => (
+                                                                <Badge key={dishType} className="mr-1">
+                                                                    {dishType.charAt(0).toUpperCase() + dishType.slice(1)}
+                                                                </Badge>
+                                                            ))}
+                                                        </CardDescription>
+                                                    </CardHeader>
+                                                    <CardContent className="pb-3">
+                                                        <div className="flex flex-wrap gap-2 mb-3">
+                                                            {recipe.cuisines.map(cuisine => (
+                                                                <Badge key={cuisine} variant="secondary">
+                                                                    {cuisine}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                                            <div className="flex items-center gap-1">
+                                                                <Clock className="h-4 w-4" />
+                                                                <span>{recipe.readyInMinutes} min</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <Users className="h-4 w-4" />
+                                                                <span>{recipe.servings} servings</span>
+                                                            </div>
+                                                        </div>
+                                                    </CardContent>
+                                                    <CardFooter>
+                                                        <Button
+                                                            onClick={() => router.push(`/recipes/${recipe.id}`)}
+                                                            className="w-full flex-1"
+                                                        >
+                                                            View Recipe
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => savedRecipeIds.has(recipe.id)
+                                                                ? handleRemoveSavedRecipe(recipe.id)
+                                                                : handleSaveRecipe(recipe.id, recipe.title, recipe.image)
+                                                            }
+                                                            variant={savedRecipeIds.has(recipe.id) ? "default" : "outline"}
+                                                            size="icon"
+                                                            className="ml-2"
+                                                        >
+                                                            <Heart
+                                                                className={`h-4 w-4 ${savedRecipeIds.has(recipe.id) ? 'fill-current' : ''}`}
+                                                            />
+                                                        </Button>
+                                                    </CardFooter>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Spoonacular Search Results Grid */}
                                 {recipes && recipes.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                         {recipes.map(recipe => (
@@ -517,7 +670,10 @@ const Recipes = () => {
                                             </Card>
                                         ))}
                                     </div>
-                                ) : (
+                                ) : (isLoading || searchTerm || customRecipes.length === 0) ? (
+                                    // Empty state card — shown when loading, search returned no results,
+                                    // or user has no custom recipes yet. Hidden when custom recipes exist
+                                    // and no search is active (the "My Recipes" grid is sufficient).
                                     <Card className="text-center py-12">
                                         <CardContent>
                                             {isLoading && (
@@ -528,7 +684,7 @@ const Recipes = () => {
                                                     </h3>
                                                 </div>
                                             )}
-                                            {searchTerm && (selectedDishType !== 'All' || selectedCuisine !== 'All') && !isLoading && (
+                                            {searchTerm && !isLoading && (
                                                 <div>
                                                     <ChefHat className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
                                                     <h3 className="text-lg font-semibold mb-2">
@@ -539,7 +695,7 @@ const Recipes = () => {
                                                     </p>
                                                 </div>
                                             )}
-                                            {!searchTerm && !isLoading && (
+                                            {!searchTerm && !isLoading && customRecipes.length === 0 && (
                                                 <div>
                                                     <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
                                                     <h3 className="text-lg font-semibold mb-2">
@@ -559,7 +715,7 @@ const Recipes = () => {
                                             )}
                                         </CardContent>
                                     </Card>
-                                )}
+                                ) : null}
                                 {/* Stats */}
                                 {recipes && recipes.length > 0 ? (
                                     <Card>

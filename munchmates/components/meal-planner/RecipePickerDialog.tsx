@@ -20,9 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Search, Clock, Users, ChefHat, Loader2, ArrowLeft, Check, Heart } from 'lucide-react';
 import { getDiets, getIntolerances } from '@/components/ingredients/Dietary';
-
-// Same localStorage key as recipes page
-const SAVED_RECIPES_STORAGE_KEY = 'saved-recipes';
+import { authedFetch } from '@/lib/authedFetch';
 
 interface Recipe {
   id: number;
@@ -171,23 +169,27 @@ export default function RecipePickerDialog({
     setSelectedDays([]);
   };
 
-  // Load saved recipes from localStorage
-  const loadSavedRecipes = () => {
-    const savedData = localStorage.getItem(SAVED_RECIPES_STORAGE_KEY);
-    if (savedData) {
-      try {
-        const recipes: SavedRecipe[] = JSON.parse(savedData);
-        setSavedRecipes(recipes);
-      } catch (error) {
-        console.error('Error loading saved recipes:', error);
+  // Load saved recipes from API
+  const loadSavedRecipes = async () => {
+    try {
+      const res = await authedFetch('/api/recipes/saved');
+      if (res.status === 401) {
+        setTimeout(loadSavedRecipes, 300);
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        setSavedRecipes(data.recipes || []);
+      } else {
         setSavedRecipes([]);
       }
-    } else {
+    } catch (error) {
+      console.error('Error loading saved recipes:', error);
       setSavedRecipes([]);
     }
   };
 
-  // Load saved recipes when dialog opens (for badge count) or tab changes to saved
+  // Load saved recipes when dialog opens
   useEffect(() => {
     if (open) {
       loadSavedRecipes();

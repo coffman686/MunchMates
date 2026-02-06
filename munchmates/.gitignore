@@ -40,8 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local data storage
-/data/
-
 # keycloak dev realm json
 munchmates/login/keycloak/import/dev-realm.json

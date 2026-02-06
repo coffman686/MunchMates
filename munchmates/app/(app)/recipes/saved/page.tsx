@@ -40,9 +40,6 @@ import {
 } from 'lucide-react';
 import { authedFetch } from '@/lib/authedFetch';
 
-// key for localStorage
-const LOCAL_KEY = 'saved-recipes';
-
 // define type for saved recipe
 type SavedRecipe = {
     recipeId: number;
@@ -74,20 +71,28 @@ const SavedRecipesPage = () => {
     const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
 
-    // Load saved recipes from localStorage on mount
+    // Load saved recipes from API on mount
     useEffect(() => {
-        setIsLoading(true);
-        try {
-            const savedData = localStorage.getItem(LOCAL_KEY);
-            if (savedData) {
-                const parsed: SavedRecipe[] = JSON.parse(savedData);
-                setSavedRecipes(parsed);
+        let cancelled = false;
+        const loadSavedRecipes = async () => {
+            try {
+                const res = await authedFetch('/api/recipes/saved');
+                if (cancelled) return;
+                if (res.status === 401) {
+                    setTimeout(loadSavedRecipes, 300);
+                    return;
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    setSavedRecipes(data.recipes || []);
+                }
+            } catch (err) {
+                console.error('Error loading saved recipes:', err);
             }
-        } catch (err) {
-            console.error('Error loading saved recipes from localStorage:', err);
-        } finally {
-            setIsLoading(false);
-        }
+            if (!cancelled) setIsLoading(false);
+        };
+        loadSavedRecipes();
+        return () => { cancelled = true; };
     }, []);
 
     // Shared loader for collections
@@ -129,14 +134,13 @@ const SavedRecipesPage = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Remove recipe and update localStorage
-    const handleRemoveSavedRecipe = (recipeId: number) => {
-        const updated = savedRecipes.filter((r) => r.recipeId !== recipeId);
-        setSavedRecipes(updated);
+    // Remove recipe via API
+    const handleRemoveSavedRecipe = async (recipeId: number) => {
+        setSavedRecipes(prev => prev.filter((r) => r.recipeId !== recipeId));
         try {
-            localStorage.setItem(LOCAL_KEY, JSON.stringify(updated));
+            await authedFetch(`/api/recipes/saved?recipeId=${recipeId}`, { method: 'DELETE' });
         } catch (err) {
-            console.error('Error saving updated recipes to localStorage:', err);
+            console.error('Error removing saved recipe:', err);
         }
     };
 

@@ -91,13 +91,13 @@ interface PantryItem {
     name: string;
     quantity: string;
     category: string;
-    expiryDate?: string;
-    addedDate: string;
+    expiryDate?: string | null;
+    addedAt: string;
 }
 
 // Grocery list items
 interface GroceryItem {
-    id: string;
+    id: number;
     name: string;
     category: string;
     completed: boolean;
@@ -303,41 +303,72 @@ export default function Dashboard() {
         loadMealPlan();
     }, []);
 
-    // load pantry alerts for items expiring within 7 days
+    // load pantry alerts for items expiring within 7 days (from API)
     useEffect(() => {
-        const stored = localStorage.getItem('munchmates_pantry');
-        if (stored) {
-            const items: PantryItem[] = JSON.parse(stored);
-            const expiring = items.filter(item => {
-                if (!item.expiryDate) return false;
-                const days = getDaysUntilExpiry(item.expiryDate);
-                return days <= 7 && days >= 0;
-            }).sort((a, b) => getDaysUntilExpiry(a.expiryDate!) - getDaysUntilExpiry(b.expiryDate!));
-            setPantryAlerts(expiring.slice(0, 5));
-        }
+        const loadPantryAlerts = async () => {
+            try {
+                const res = await authedFetch('/api/pantry');
+                if (res.ok) {
+                    const data = await res.json();
+                    const items: PantryItem[] = data.items || [];
+                    const expiring = items.filter(item => {
+                        if (!item.expiryDate) return false;
+                        const days = getDaysUntilExpiry(item.expiryDate);
+                        return days <= 7 && days >= 0;
+                    }).sort((a, b) => getDaysUntilExpiry(a.expiryDate!) - getDaysUntilExpiry(b.expiryDate!));
+                    setPantryAlerts(expiring.slice(0, 5));
+                }
+            } catch {
+                // silently fail
+            }
+        };
+        loadPantryAlerts();
     }, []);
 
-    // load grocery list and count active items
+    // load grocery list and count active items (from API)
     useEffect(() => {
-        const stored = localStorage.getItem('grocery-list-items');
-        if (stored) {
-            const items: GroceryItem[] = JSON.parse(stored);
-            const activeCount = items.filter(i => !i.completed).length;
-            setGroceryCount(activeCount);
-        }
+        const loadGroceryCount = async () => {
+            try {
+                const res = await authedFetch('/api/grocery');
+                if (res.ok) {
+                    const data = await res.json();
+                    const items: GroceryItem[] = data.items || [];
+                    const activeCount = items.filter(i => !i.completed).length;
+                    setGroceryCount(activeCount);
+                }
+            } catch {
+                // silently fail
+            }
+        };
+        loadGroceryCount();
     }, []);
 
-    // load saved recipes and show most recent 4
+    // load saved recipes from API and show most recent 4
     useEffect(() => {
-        const stored = localStorage.getItem('saved-recipes');
-        if (stored) {
-            const recipes: SavedRecipe[] = JSON.parse(stored);
-            const recent = recipes
-                .sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
-                .slice(0, 4);
-            setSavedRecipes(recent);
-            setWeeklyStats(prev => ({ ...prev, recipesTotal: recipes.length }));
-        }
+        let cancelled = false;
+        const loadSavedRecipes = async () => {
+            try {
+                const res = await authedFetch('/api/recipes/saved');
+                if (cancelled) return;
+                if (res.status === 401) {
+                    setTimeout(loadSavedRecipes, 300);
+                    return;
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    const recipes: SavedRecipe[] = data.recipes || [];
+                    const recent = recipes
+                        .sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
+                        .slice(0, 4);
+                    setSavedRecipes(recent);
+                    setWeeklyStats(prev => ({ ...prev, recipesTotal: recipes.length }));
+                }
+            } catch {
+                // silently fail
+            }
+        };
+        loadSavedRecipes();
+        return () => { cancelled = true; };
     }, []);
 
     // load shared collections and show up to 3

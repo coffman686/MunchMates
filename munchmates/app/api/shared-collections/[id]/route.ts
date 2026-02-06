@@ -1,19 +1,16 @@
-// sharedCollections/[id]/route.ts
+// shared-collections/[id]/route.ts
 // Endpoints to retrieve, update, and manage a recipe collection
 // This pertains specifically to accessing and modifying individual collections
 // Requires authenticated user
 //   GET: retrieves collection information
-//   PUT: handles updating collection information, recipe addition, recipe removal and removes recipes
-//   DELETE: allows user to leave a collection
+//   PUT: handles updating collection information, recipe addition, recipe removal
+//   DELETE: allows user to leave a collection (owner deletes, non-owner leaves)
+// Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyBearer } from "@/lib/verifyToken";
-import {
-    sharedCollections,
-    SharedCollection,
-    CollectionMember,
-    SharedRecipe
-} from "../../../../lib/sharedCollectionsStore";
+import { prisma } from "@/lib/prisma";
+import { formatCollection } from "@/lib/formatCollection";
 
 type RouteContext = {
     params: Promise<{ id: string }>;
@@ -26,7 +23,11 @@ export async function GET(req: NextRequest, context: RouteContext) {
         const userId = p.sub;
         const { id: collectionId } = await context.params;
 
-        const collection = sharedCollections.get(collectionId);
+        const collection = await prisma.sharedCollection.findUnique({
+            where: { id: collectionId },
+            include: { members: true, recipes: true },
+        });
+
         if (!collection) {
             return NextResponse.json(
                 { error: "Collection not found" },
@@ -34,8 +35,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
             );
         }
 
-        // Check if user is a member
-        const isMember = collection.members.some((m: CollectionMember) => m.userId === userId);
+        const isMember = collection.members.some(m => m.userId === userId);
         if (!isMember) {
             return NextResponse.json(
                 { error: "You don't have access to this collection" },
@@ -45,13 +45,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
         return NextResponse.json({
             ok: true,
-            collection,
+            collection: formatCollection(collection),
         });
     } catch (error) {
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 }
-        );
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        console.error("Error in GET /api/shared-collections/[id]:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
@@ -63,7 +64,11 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         const userName = p.preferred_username || p.name || 'Unknown User';
         const { id: collectionId } = await context.params;
 
-        const collection = sharedCollections.get(collectionId);
+        const collection = await prisma.sharedCollection.findUnique({
+            where: { id: collectionId },
+            include: { members: true, recipes: true },
+        });
+
         if (!collection) {
             return NextResponse.json(
                 { error: "Collection not found" },
@@ -72,7 +77,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         }
 
         // Check if user is a member with edit rights
-        const userMember = collection.members.find((m: CollectionMember) => m.userId === userId);
+        const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember || userMember.role === 'viewer') {
             return NextResponse.json(
                 { error: "You don't have permission to edit this collection" },
@@ -84,18 +89,25 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         const { action, name, description, recipeId, recipeName } = body;
 
         switch (action) {
-            case 'update':
-                // Update collection details
-                if (name !== undefined) {
-                    collection.name = name.trim();
-                }
-                if (description !== undefined) {
-                    collection.description = description.trim();
-                }
-                break;
+            case 'update': {
+                const updateData: { name?: string; description?: string } = {};
+                if (name !== undefined) updateData.name = name.trim();
+                if (description !== undefined) updateData.description = description.trim();
 
-            case 'addRecipe':
-                // Add a recipe to the collection
+                const updated = await prisma.sharedCollection.update({
+                    where: { id: collectionId },
+                    data: updateData,
+                    include: { members: true, recipes: true },
+                });
+
+                return NextResponse.json({
+                    ok: true,
+                    message: "Collection updated successfully",
+                    collection: formatCollection(updated),
+                });
+            }
+
+            case 'addRecipe': {
                 if (!recipeId || !recipeName) {
                     return NextResponse.json(
                         { error: "recipeId and recipeName are required" },
@@ -103,8 +115,8 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                     );
                 }
 
-                // Check if recipe already exists
-                const existingRecipe = collection.recipes.find((r: SharedRecipe) => r.recipeId === recipeId);
+                // Check if recipe already exists in collection
+                const existingRecipe = collection.recipes.find(r => r.recipeId === recipeId);
                 if (existingRecipe) {
                     return NextResponse.json(
                         { message: "Recipe is already in this collection" },
@@ -112,17 +124,29 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                     );
                 }
 
-                collection.recipes.push({
-                    recipeId,
-                    recipeName,
-                    addedBy: userId,
-                    addedByName: userName,
-                    addedAt: new Date().toISOString(),
+                await prisma.collectionRecipe.create({
+                    data: {
+                        collectionId,
+                        recipeId,
+                        recipeName,
+                        addedBy: userId,
+                        addedByName: userName,
+                    },
                 });
-                break;
 
-            case 'removeRecipe':
-                // Remove a recipe from the collection
+                const updated = await prisma.sharedCollection.findUnique({
+                    where: { id: collectionId },
+                    include: { members: true, recipes: true },
+                });
+
+                return NextResponse.json({
+                    ok: true,
+                    message: "Collection updated successfully",
+                    collection: formatCollection(updated!),
+                });
+            }
+
+            case 'removeRecipe': {
                 if (!recipeId) {
                     return NextResponse.json(
                         { error: "recipeId is required" },
@@ -130,16 +154,29 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                     );
                 }
 
-                const recipeIndex = collection.recipes.findIndex((r: SharedRecipe) => r.recipeId === recipeId);
-                if (recipeIndex === -1) {
+                const existingRecipe = collection.recipes.find(r => r.recipeId === recipeId);
+                if (!existingRecipe) {
                     return NextResponse.json(
                         { error: "Recipe not found in collection" },
                         { status: 404 }
                     );
                 }
 
-                collection.recipes.splice(recipeIndex, 1);
-                break;
+                await prisma.collectionRecipe.delete({
+                    where: { collectionId_recipeId: { collectionId, recipeId } },
+                });
+
+                const updated = await prisma.sharedCollection.findUnique({
+                    where: { id: collectionId },
+                    include: { members: true, recipes: true },
+                });
+
+                return NextResponse.json({
+                    ok: true,
+                    message: "Collection updated successfully",
+                    collection: formatCollection(updated!),
+                });
+            }
 
             default:
                 return NextResponse.json(
@@ -147,20 +184,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                     { status: 400 }
                 );
         }
-
-        sharedCollections.set(collectionId, collection);
-
-        return NextResponse.json({
-            ok: true,
-            message: "Collection updated successfully",
-            collection,
-        });
     } catch (error) {
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
         console.error("Error updating collection:", error);
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 }
-        );
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
@@ -171,7 +200,11 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         const userId = p.sub;
         const { id: collectionId } = await context.params;
 
-        const collection = sharedCollections.get(collectionId);
+        const collection = await prisma.sharedCollection.findUnique({
+            where: { id: collectionId },
+            include: { members: true },
+        });
+
         if (!collection) {
             return NextResponse.json(
                 { error: "Collection not found" },
@@ -179,7 +212,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
             );
         }
 
-        const userMember = collection.members.find((m: CollectionMember) => m.userId === userId);
+        const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember) {
             return NextResponse.json(
                 { error: "You are not a member of this collection" },
@@ -188,25 +221,29 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         }
 
         if (userMember.role === 'owner') {
-            // Owner deletes the entire collection
-            sharedCollections.delete(collectionId);
+            // Owner deletes the entire collection (cascade handles members + recipes)
+            await prisma.sharedCollection.delete({
+                where: { id: collectionId },
+            });
             return NextResponse.json({
                 ok: true,
                 message: "Collection deleted successfully",
             });
         } else {
             // Non-owner leaves the collection
-            collection.members = collection.members.filter((m: CollectionMember) => m.userId !== userId);
-            sharedCollections.set(collectionId, collection);
+            await prisma.collectionMember.delete({
+                where: { collectionId_userId: { collectionId, userId } },
+            });
             return NextResponse.json({
                 ok: true,
                 message: "You have left the collection",
             });
         }
     } catch (error) {
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 }
-        );
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        console.error("Error in DELETE /api/shared-collections/[id]:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

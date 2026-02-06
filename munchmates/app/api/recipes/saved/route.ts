@@ -1,24 +1,21 @@
 // Saved Recipes API Route (POST / GET / DELETE)
 // Provides per-user saved-recipe management using Bearer-token authentication.
-// POST   → Saves a new recipe for the authenticated user (id, name required).
+// POST   → Saves a new recipe for the authenticated user (id, name, optional image).
 // GET    → Returns all saved recipes for the requesting user.
 // DELETE → Removes a specific saved recipe using ?recipeId=.
-// Backed by an in-memory savedRecipesStore, meaning data resets on server restart.
-// Intended for temporary development use — replace with a database for persistence.
+// Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyBearer } from "@/lib/verifyToken";
-import { savedRecipesStore, SavedRecipe } from "@/lib/savedRecipesStore";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
     try {
-        // Verify authentication
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
 
-        // Parse request body
         const body = await req.json();
-        const { recipeId, recipeName } = body;
+        const { recipeId, recipeName, recipeImage } = body;
 
         if (!recipeId || !recipeName) {
             return NextResponse.json(
@@ -28,39 +25,50 @@ export async function POST(req: NextRequest) {
         }
 
         // Check if recipe is already saved
-        if (savedRecipesStore.hasRecipe(userId, recipeId)) {
+        const existing = await prisma.savedRecipe.findUnique({
+            where: { userId_recipeId: { userId, recipeId } },
+        });
+
+        if (existing) {
             return NextResponse.json(
                 { message: "Recipe is already saved" },
                 { status: 200 }
             );
         }
 
-        // Add new saved recipe
-        const newSavedRecipe: SavedRecipe = {
-            userId,
-            recipeId,
-            recipeName,
-            savedAt: new Date().toISOString(),
-        };
+        // Ensure User record exists
+        await prisma.user.upsert({
+            where: { id: userId },
+            update: {},
+            create: { id: userId },
+        });
 
-        savedRecipesStore.addRecipe(userId, newSavedRecipe);
+        const newSavedRecipe = await prisma.savedRecipe.create({
+            data: { userId, recipeId, recipeName, recipeImage: recipeImage || null },
+        });
 
         return NextResponse.json(
             {
                 ok: true,
                 message: "Recipe saved successfully",
-                recipe: newSavedRecipe,
+                recipe: {
+                    userId: newSavedRecipe.userId,
+                    recipeId: newSavedRecipe.recipeId,
+                    recipeName: newSavedRecipe.recipeName,
+                    recipeImage: newSavedRecipe.recipeImage,
+                    savedAt: newSavedRecipe.savedAt.toISOString(),
+                },
             },
             { status: 201 }
         );
     } catch (error) {
-        console.error("Error saving recipe:", error);
-        if (error instanceof Error && error.message === "Unauthorized") {
+        if (error instanceof Error && error.message === "no token") {
             return NextResponse.json(
                 { error: "Unauthorized" },
                 { status: 401 }
             );
         }
+        console.error("Error saving recipe:", error);
         return NextResponse.json(
             { error: "Failed to save recipe" },
             { status: 500 }
@@ -74,18 +82,30 @@ export async function GET(req: NextRequest) {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
 
-        const recipes = savedRecipesStore.get(userId);
+        const recipes = await prisma.savedRecipe.findMany({
+            where: { userId },
+        });
 
         return NextResponse.json({
             ok: true,
-            recipes,
+            recipes: recipes.map((r) => ({
+                userId: r.userId,
+                recipeId: r.recipeId,
+                recipeName: r.recipeName,
+                recipeImage: r.recipeImage,
+                savedAt: r.savedAt.toISOString(),
+            })),
             count: recipes.length,
         });
     } catch (error) {
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 }
-        );
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            );
+        }
+        console.error("Error in GET /api/recipes/saved:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
@@ -105,9 +125,11 @@ export async function DELETE(req: NextRequest) {
             );
         }
 
-        const removed = savedRecipesStore.removeRecipe(userId, parseInt(recipeId));
+        const deleted = await prisma.savedRecipe.deleteMany({
+            where: { userId, recipeId: parseInt(recipeId) },
+        });
 
-        if (!removed) {
+        if (deleted.count === 0) {
             return NextResponse.json(
                 { error: "Recipe not found in saved recipes" },
                 { status: 404 }
@@ -119,9 +141,13 @@ export async function DELETE(req: NextRequest) {
             message: "Recipe removed from saved recipes",
         });
     } catch (error) {
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 }
-        );
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            );
+        }
+        console.error("Error in DELETE /api/recipes/saved:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
