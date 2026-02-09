@@ -1,9 +1,9 @@
-// Custom Recipe API Route (POST / GET)
-// Allows authenticated users to create and retrieve their own custom recipes.
-// POST → Validates required fields (title, ingredients, instructions), auto-generates
-//        a unique high-range ID (starting at 100000), and stores in Postgres.
-// GET  → Returns all custom recipes for the authenticated user, or a single recipe
-//        by ID via the ?id= query param (no auth required for single lookups).
+// Custom Recipe API Route (POST / GET / DELETE)
+// Allows authenticated users to create, retrieve, and delete their own custom recipes.
+// POST   → Validates required fields (title, ingredients, instructions) and stores in Postgres.
+// GET    → Returns all custom recipes for the authenticated user, or a single recipe
+//          by ID via the ?id= query param (no auth required for single lookups).
+// DELETE → Removes a custom recipe by ?id= for the authenticated user.
 // Backed by Postgres via Prisma — data persists across server restarts.
 // Uses mapToRecipeInfo() to convert DB rows into the RecipeInfo shape the UI expects,
 // mapping the ingredients string array into the extendedIngredients format.
@@ -193,6 +193,33 @@ export async function GET(req: NextRequest) {
             );
         }
         console.error("Error in GET /api/recipes/create:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: NextRequest) {
+    try {
+        const p = await verifyBearer(req.headers.get("authorization") || undefined);
+        const userId = p.sub;
+
+        const id = parseInt(req.nextUrl.searchParams.get("id") || "", 10);
+        if (isNaN(id)) {
+            return NextResponse.json({ error: "Invalid recipe ID" }, { status: 400 });
+        }
+
+        const recipe = await prisma.customRecipe.findUnique({ where: { id } });
+        if (!recipe || recipe.userId !== userId) {
+            return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
+        }
+
+        await prisma.customRecipe.delete({ where: { id } });
+
+        return NextResponse.json({ ok: true, message: "Recipe deleted" });
+    } catch (error) {
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        console.error("Error in DELETE /api/recipes/create:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

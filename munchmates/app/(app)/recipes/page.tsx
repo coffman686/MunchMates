@@ -4,9 +4,6 @@
 // and respects user dietary preferences/intolerances pulled from their profile.
 // Integrates with Spoonacular search API for external recipes and a custom
 // "Create Recipe" dialog that posts user-authored recipes to /api/recipes/create.
-// Displays user's custom recipes in a "My Recipes" section above search results,
-// loaded from /api/recipes/create on mount. Newly created recipes are added to
-// the grid immediately without requiring a page refresh.
 // Also manages favorite recipes via the saved-recipes API so users
 // can toggle hearts in the grid and access them later from the Saved Recipes view.
 
@@ -223,9 +220,6 @@ const Recipes = () => {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // state for user-created custom recipes, loaded from DB on mount
-    const [customRecipes, setCustomRecipes] = useState<Recipe[]>([]);
-
     const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
     const [savedRecipeIds, setSavedRecipeIds] = useState<Set<number>>(new Set());
 
@@ -251,41 +245,6 @@ const Recipes = () => {
             }
         };
         loadSaved();
-        return () => { cancelled = true; };
-    }, []);
-
-    // Load user's custom recipes from DB on mount
-    // Maps DB response to the Recipe type used by the grid cards
-    // Retries on 401 to handle Keycloak token not yet ready
-    useEffect(() => {
-        let cancelled = false;
-        const loadCustom = async () => {
-            try {
-                const res = await authedFetch('/api/recipes/create');
-                if (cancelled) return;
-                if (res.status === 401) {
-                    setTimeout(loadCustom, 300);
-                    return;
-                }
-                if (res.ok) {
-                    const data = await res.json();
-                    const recipes = (data.recipes || []).map((r: any) => ({
-                        id: r.id,
-                        title: r.title,
-                        image: r.image || '',
-                        score: 0,
-                        servings: r.servings,
-                        readyInMinutes: r.readyInMinutes,
-                        cuisines: r.cuisines || [],
-                        dishTypes: r.dishTypes || [],
-                    }));
-                    setCustomRecipes(recipes);
-                }
-            } catch (error) {
-                console.error('Error loading custom recipes:', error);
-            }
-        };
-        loadCustom();
         return () => { cancelled = true; };
     }, []);
 
@@ -347,21 +306,6 @@ const Recipes = () => {
 
             const data = await response.json();
             console.log('Recipe created successfully:', data);
-
-            // Add to custom recipes list so it appears in the "My Recipes" grid
-            // immediately without needing a page refresh
-            if (data.recipe) {
-                setCustomRecipes(prev => [...prev, {
-                    id: data.recipe.id,
-                    title: data.recipe.title,
-                    image: data.recipe.image || '',
-                    score: 0,
-                    servings: data.recipe.servings,
-                    readyInMinutes: data.recipe.readyInMinutes,
-                    cuisines: data.recipe.cuisines || [],
-                    dishTypes: data.recipe.dishTypes || [],
-                }]);
-            }
 
             // Close dialog and reset form
             setShowCreateDialog(false);
@@ -471,6 +415,16 @@ const Recipes = () => {
                                         <Heart className="h-4 w-4" />
                                         Saved Recipes
                                     </Button>
+
+                                    <Button
+                                        type="button"
+                                        onClick={() => router.push('/recipes/my-recipes')}
+                                        className="inline-flex items-center gap-2"
+                                        variant="outline"
+                                    >
+                                        <ChefHat className="h-4 w-4" />
+                                        My Recipes
+                                    </Button>
                                 </DynamicList>
 
 
@@ -513,86 +467,6 @@ const Recipes = () => {
                                     </Select>
 
                                 </div>
-                                {/* My Custom Recipes — shows user-created recipes from DB */}
-                                {/* Displayed above search results, hidden when empty */}
-                                {customRecipes.length > 0 && (
-                                    <div className="space-y-4">
-                                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                                            <ChefHat className="h-5 w-5" />
-                                            My Recipes
-                                        </h2>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                            {customRecipes.map(recipe => (
-                                                <Card key={recipe.id} className="flex flex-col overflow-hidden hover:shadow-lg transition-shadow duration-300">
-                                                    <div className="h-48 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
-                                                        {recipe.image ? (
-                                                            <img
-                                                                src={recipe.image}
-                                                                alt={recipe.title}
-                                                                className="h-full w-full object-cover"
-                                                            />
-                                                        ) : (
-                                                            <ChefHat className="h-16 w-16 text-muted-foreground/50" />
-                                                        )}
-                                                    </div>
-                                                    <CardHeader className="pb-3 flex-1">
-                                                        <CardTitle className="text-lg leading-tight">
-                                                            {recipe.title}
-                                                        </CardTitle>
-                                                        <CardDescription className="line-clamp-2">
-                                                            {recipe.dishTypes.map(dishType => (
-                                                                <Badge key={dishType} className="mr-1">
-                                                                    {dishType.charAt(0).toUpperCase() + dishType.slice(1)}
-                                                                </Badge>
-                                                            ))}
-                                                        </CardDescription>
-                                                    </CardHeader>
-                                                    <CardContent className="pb-3">
-                                                        <div className="flex flex-wrap gap-2 mb-3">
-                                                            {recipe.cuisines.map(cuisine => (
-                                                                <Badge key={cuisine} variant="secondary">
-                                                                    {cuisine}
-                                                                </Badge>
-                                                            ))}
-                                                        </div>
-                                                        <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                                            <div className="flex items-center gap-1">
-                                                                <Clock className="h-4 w-4" />
-                                                                <span>{recipe.readyInMinutes} min</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <Users className="h-4 w-4" />
-                                                                <span>{recipe.servings} servings</span>
-                                                            </div>
-                                                        </div>
-                                                    </CardContent>
-                                                    <CardFooter>
-                                                        <Button
-                                                            onClick={() => router.push(`/recipes/${recipe.id}`)}
-                                                            className="w-full flex-1"
-                                                        >
-                                                            View Recipe
-                                                        </Button>
-                                                        <Button
-                                                            onClick={() => savedRecipeIds.has(recipe.id)
-                                                                ? handleRemoveSavedRecipe(recipe.id)
-                                                                : handleSaveRecipe(recipe.id, recipe.title, recipe.image)
-                                                            }
-                                                            variant={savedRecipeIds.has(recipe.id) ? "default" : "outline"}
-                                                            size="icon"
-                                                            className="ml-2"
-                                                        >
-                                                            <Heart
-                                                                className={`h-4 w-4 ${savedRecipeIds.has(recipe.id) ? 'fill-current' : ''}`}
-                                                            />
-                                                        </Button>
-                                                    </CardFooter>
-                                                </Card>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
                                 {/* Spoonacular Search Results Grid */}
                                 {recipes && recipes.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -670,10 +544,7 @@ const Recipes = () => {
                                             </Card>
                                         ))}
                                     </div>
-                                ) : (isLoading || searchTerm || customRecipes.length === 0) ? (
-                                    // Empty state card — shown when loading, search returned no results,
-                                    // or user has no custom recipes yet. Hidden when custom recipes exist
-                                    // and no search is active (the "My Recipes" grid is sufficient).
+                                ) : (
                                     <Card className="text-center py-12">
                                         <CardContent>
                                             {isLoading && (
@@ -695,7 +566,7 @@ const Recipes = () => {
                                                     </p>
                                                 </div>
                                             )}
-                                            {!searchTerm && !isLoading && customRecipes.length === 0 && (
+                                            {!searchTerm && !isLoading && (
                                                 <div>
                                                     <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
                                                     <h3 className="text-lg font-semibold mb-2">
@@ -715,7 +586,7 @@ const Recipes = () => {
                                             )}
                                         </CardContent>
                                     </Card>
-                                ) : null}
+                                )}
                                 {/* Stats */}
                                 {recipes && recipes.length > 0 ? (
                                     <Card>

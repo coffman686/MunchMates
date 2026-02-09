@@ -2,11 +2,14 @@
 // Ensures authenticated fetch requests with Keycloak token
 
 'use client';
-import { ensureToken, keycloak } from '@/lib/keycloak';
+import { ensureToken, waitForInit, keycloak } from '@/lib/keycloak';
 
 export async function authedFetch(input: RequestInfo, init: RequestInit = {}) {
     const headers = new Headers(init.headers || {});
     headers.set('Content-Type', 'application/json');
+
+    // Wait for Keycloak init to fully settle (never triggers init itself)
+    await waitForInit();
 
     // validate authentication
     if (keycloak.authenticated) {

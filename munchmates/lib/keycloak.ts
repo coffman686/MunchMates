@@ -31,6 +31,11 @@ export function initKeycloak(mode: 'login-required' | 'check-sso' = 'login-requi
     return initPromise;
 }
 
+// Wait for an existing init to settle; never triggers init itself.
+export function waitForInit() {
+    return initPromise ?? Promise.resolve(false);
+}
+
 // Passive refresh: never triggers login
 export async function ensureToken() {
     if (!keycloak.authenticated) return undefined;

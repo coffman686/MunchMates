@@ -187,14 +187,15 @@ const RecipeDetailPage = () => {
   };
 
   // Handle static routes that might be caught by this dynamic route
+  const staticRoutes = ["saved", "my-recipes"];
   useEffect(() => {
-    if (recipeId === "saved") {
-      window.location.href = "/recipes/saved";
+    if (staticRoutes.includes(recipeId || "")) {
+      window.location.href = `/recipes/${recipeId}`;
     }
   }, [recipeId]);
 
-  // Don't render if this is actually the saved route
-  if (!recipeId || recipeId === "saved") {
+  // Don't render if this is actually a static route
+  if (!recipeId || staticRoutes.includes(recipeId)) {
     return null;
   }
 
