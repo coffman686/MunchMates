@@ -1,3 +1,12 @@
+// My Recipes Page
+// Displays the user's custom-created recipes in a responsive card grid.
+// Features:
+// - Fetches custom recipes from `/api/recipes/create` via `authedFetch`
+// - Responsive grid layout with recipe image, dish types, cuisines, cook time, and servings
+// - Delete functionality with optimistic UI update
+// - Empty state prompting the user to create their first recipe
+// - Loading spinner while recipes are fetched from the database
+
 'use client';
 
 import { useState, useEffect } from 'react';

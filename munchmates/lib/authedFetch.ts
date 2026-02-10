@@ -1,5 +1,9 @@
 // lib/authedFetch.ts
-// Ensures authenticated fetch requests with Keycloak token
+// Authenticated fetch wrapper for MunchMates API calls.
+// - Waits for Keycloak initialization before making requests
+// - Attaches a Bearer token when the user is authenticated
+// - Automatically refreshes near-expiry tokens via `ensureToken`
+// - Falls back gracefully with a console warning when unauthenticated
 
 'use client';
 import { ensureToken, waitForInit, keycloak } from '@/lib/keycloak';
