@@ -1,1 +1,10 @@
 .DS_Store
+
+# LaTeX source and build artifacts
+docs/architecture/*.tex
+docs/architecture/*.aux
+docs/architecture/*.log
+docs/architecture/*.out
+docs/architecture/figures/*.mmd
+docs/architecture/figures/*.png
+docs/architecture/figures/mermaid-config.json
