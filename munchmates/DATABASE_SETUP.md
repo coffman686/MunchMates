@@ -29,7 +29,7 @@ If you already have the Keycloak Docker stack running (which you most likely do)
 Run this once to create the database and user inside the existing Postgres container:
 
 ```bash
-PGPASSWORD=keycloak psql -h localhost -p 5433 -U keycloak -d keycloak \
+docker exec -i keycloak-db-1 psql -U keycloak -d keycloak \
   -c "CREATE USER munchmates WITH PASSWORD 'munchmates_dev' CREATEDB;" \
   -c "CREATE DATABASE munchmates OWNER munchmates;"
 ```
@@ -68,8 +68,7 @@ This creates all database tables and generates the Prisma client. You should see
 Run this to confirm all tables were created:
 
 ```bash
-PGPASSWORD=munchmates_dev psql -h localhost -p 5433 -U munchmates -d munchmates \
-  -c "\dt"
+docker exec -i keycloak-db-1 psql -U munchmates -d munchmates -c "\dt"
 ```
 
 You should see all 12 tables listed:
