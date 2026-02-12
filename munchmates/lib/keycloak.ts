@@ -1,6 +1,13 @@
 // lib/keycloak.ts
-// Provides a singleton KC instance, initialization helper,
-// token refresh logic, and convenience wrappers for login/logout.
+// Keycloak authentication singleton for MunchMates.
+// Provides initialization, token management, and auth convenience wrappers.
+// Exports:
+// - `keycloak`: singleton Keycloak instance
+// - `initKeycloak(mode)`: one-time init with 'login-required' or 'check-sso'
+// - `waitForInit()`: passive wait for existing init (never triggers init itself)
+// - `ensureToken()`: refresh token if expiring within 30s, never triggers login
+// - `login`, `register`, `logout`: redirect-based auth flows
+// - `getAccessTokenClaims`, `getParsedIdToken`: typed token accessors
 
 'use client';
 import Keycloak, { KeycloakLoginOptions } from 'keycloak-js';
@@ -29,6 +36,11 @@ export function initKeycloak(mode: 'login-required' | 'check-sso' = 'login-requi
         // messageReceiveTimeout: 3000, // optional: shorter wait in dev
     });
     return initPromise;
+}
+
+// Wait for an existing init to settle; never triggers init itself.
+export function waitForInit() {
+    return initPromise ?? Promise.resolve(false);
 }
 
 // Passive refresh: never triggers login

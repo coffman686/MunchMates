@@ -1,14 +1,14 @@
 // Grocery List Page
-// Implements the MunchMates grocery list experience with localStorage-backed
-// persistence and optional imports from the meal planner.
+// Implements the MunchMates grocery list experience with database persistence
+// and optional imports from the meal planner.
 // Features:
-// - LocalStorage storage for items and user-defined categories (per browser)
+// - Database persistence via /api/grocery — data syncs across devices
 // - Import and merge of aggregated ingredients from the meal planner via
-//   `pending-grocery-items` and `fromMealPlan=true` URL flag
+//   `pending-grocery-items` and `fromMealPlan=true` URL flag (calls API import endpoint)
 // - Category-based organization with per-category cards and item counts
 // - Inline editing of item name, quantity, and category with keyboard shortcuts
 // - Filters for All / To Buy / Completed plus summary stats (total, active, done)
-// - Image-powered item entry via ImageClassificationDialog (“Add via image”)
+// - Image-powered item entry via ImageClassificationDialog ("Add via image")
 // - Category management (add/delete, with safe reassignment of affected items)
 // - Bulk actions to clear completed items or wipe the entire list
 // - Suspense fallback layout that preserves the app shell while URL params load.
@@ -17,7 +17,7 @@
 'use client';
 
 // import all necessary modules and components
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/layout/app-header';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ import { Trash2, Plus, ShoppingCart, CheckCircle2, Circle, Filter, PencilLine, X
 import { SidebarProvider } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/layout/app-sidebar';
 import ImageClassificationDialog from '@/components/image-classification-dialog';
+import { authedFetch } from '@/lib/authedFetch';
 import {
     Select,
     SelectTrigger,
@@ -39,171 +40,119 @@ import { AggregatedIngredient } from '@/lib/types/meal-plan';
 
 // define grocery item interface
 interface GroceryItem {
-    id: string;
+    id: number;
     name: string;
     category: string;
     completed: boolean;
-    quantity?: string;
+    quantity?: string | null;
     fromMealPlan?: boolean;
+    addedAt: string;
 }
 
-const STORAGE_KEY = 'grocery-list-items';
-const CATEGORIES_STORAGE_KEY = 'grocery-list-categories';
+interface GroceryCategory {
+    id: number;
+    name: string;
+    sortOrder: number;
+}
 
 // main grocery list component
 // includes adding, editing, deleting, categorizing, and filtering items
 // also handles importing items from meal planner
-// and saving/loading from localStorage
+// and saving/loading from database API
 function GroceryListContent() {
     const searchParams = useSearchParams();
     const [newItem, setNewItem] = useState('');
     const [newCategory, setNewCategory] = useState('');
     const [items, setItems] = useState<GroceryItem[]>([]);
-    const [categories, setCategories] = useState(['Produce', 'Dairy', 'Meat & Seafood', 'Pantry', 'Bakery', 'Frozen', 'Spices & Seasonings', 'Canned Goods', 'Pasta & Grains', 'Condiments', 'Oils & Vinegars', 'Baking', 'Beverages']);
+    const [categories, setCategories] = useState<string[]>([]);
     const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
     const [importedCount, setImportedCount] = useState(0);
-    const [isLoaded, setIsLoaded] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
 
-    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingId, setEditingId] = useState<number | null>(null);
     const [editName, setEditName] = useState('');
     const [editQuantity, setEditQuantity] = useState('');
     const [editCategory, setEditCategory] = useState('');
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
-    // load items and categories from localStorage on mount
-    useEffect(() => {
-        const savedItems = localStorage.getItem(STORAGE_KEY);
-        const savedCategories = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-
-        if (savedItems) {
-            try {
-                setItems(JSON.parse(savedItems));
-            } catch (error) {
-                console.error('Failed to parse saved grocery items:', error);
+    // Fetch grocery items from API
+    const fetchItems = useCallback(async () => {
+        try {
+            const res = await authedFetch('/api/grocery');
+            if (res.ok) {
+                const data = await res.json();
+                setItems(data.items || []);
             }
+        } catch (error) {
+            console.error('Failed to fetch grocery items:', error);
         }
-
-        if (savedCategories) {
-            try {
-                setCategories(JSON.parse(savedCategories));
-            } catch (error) {
-                console.error('Failed to parse saved categories:', error);
-            }
-        }
-
-        setIsLoaded(true);
     }, []);
 
-    // save items to localStorage
-    useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    // Fetch categories from API
+    const fetchCategories = useCallback(async () => {
+        try {
+            const res = await authedFetch('/api/grocery/categories');
+            if (res.ok) {
+                const data = await res.json();
+                const cats: GroceryCategory[] = data.categories || [];
+                setCategories(cats.map(c => c.name));
+            }
+        } catch (error) {
+            console.error('Failed to fetch categories:', error);
         }
-    }, [items, isLoaded]);
+    }, []);
 
-    // save categories to localStorage
+    // Load items and categories on mount
     useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
-        }
-    }, [categories, isLoaded]);
+        const loadData = async () => {
+            setIsLoading(true);
+            await Promise.all([fetchItems(), fetchCategories()]);
+            setIsLoading(false);
+        };
+        loadData();
+    }, [fetchItems, fetchCategories]);
 
-    // import items from meal plan if URL param is present
+    // Import items from meal plan if URL param is present
     useEffect(() => {
-        if (!isLoaded) return;
+        if (isLoading) return;
 
         const fromMealPlan = searchParams.get('fromMealPlan');
         if (fromMealPlan === 'true') {
             const pendingData = localStorage.getItem('pending-grocery-items');
             if (pendingData) {
-                try {
-                    const aggregatedItems: AggregatedIngredient[] = JSON.parse(pendingData);
-                    mergeIngredients(aggregatedItems);
-                    localStorage.removeItem('pending-grocery-items');
+                (async () => {
+                    try {
+                        const aggregatedItems: AggregatedIngredient[] = JSON.parse(pendingData);
 
-                    window.history.replaceState({}, '', '/grocery-list');
-                } catch (error) {
-                    console.error('Failed to parse pending grocery items:', error);
-                }
+                        // Use the import API endpoint
+                        const res = await authedFetch('/api/grocery/import', {
+                            method: 'POST',
+                            body: JSON.stringify({ items: aggregatedItems }),
+                        });
+
+                        if (res.ok) {
+                            const data = await res.json();
+                            setImportedCount(data.addedCount || 0);
+
+                            // Refetch items and categories
+                            await Promise.all([fetchItems(), fetchCategories()]);
+                        }
+
+                        localStorage.removeItem('pending-grocery-items');
+                        window.history.replaceState({}, '', '/grocery-list');
+
+                        // Clear notification after 5 seconds
+                        setTimeout(() => {
+                            setImportedCount(0);
+                        }, 5000);
+                    } catch (error) {
+                        console.error('Failed to import grocery items:', error);
+                    }
+                })();
             }
         }
-    }, [searchParams, isLoaded]);
-
-    // merge imported ingredients into grocery list
-    const mergeIngredients = (aggregatedItems: AggregatedIngredient[]) => {
-        let addedCount = 0;
-
-        setItems((prevItems) => {
-            const newItems = [...prevItems];
-            const existingNames = new Set(prevItems.map((item) => item.name.toLowerCase()));
-
-            for (const ingredient of aggregatedItems) {
-                const nameLower = ingredient.name.toLowerCase();
-
-                // check if item already exists
-                if (existingNames.has(nameLower)) {
-                    // update existing item's quantity
-                    const existingIndex = newItems.findIndex(
-                        (item) => item.name.toLowerCase() === nameLower
-                    );
-                    if (existingIndex !== -1) {
-                        const existing = newItems[existingIndex];
-                        // append quantities to existing quantity
-                        const newQuantity = formatQuantity(ingredient.totalAmount, ingredient.unit);
-                        if (existing.quantity && newQuantity) {
-                            newItems[existingIndex] = {
-                                ...existing,
-                                quantity: `${existing.quantity} + ${newQuantity}`,
-                            };
-                        } else if (newQuantity) {
-                            newItems[existingIndex] = {
-                                ...existing,
-                                quantity: newQuantity,
-                            };
-                        }
-                    }
-                } else {
-                    // add new item to grocery list
-                    const newItem: GroceryItem = {
-                        id: `meal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        name: ingredient.name,
-                        category: ingredient.category,
-                        completed: false,
-                        quantity: formatQuantity(ingredient.totalAmount, ingredient.unit),
-                        fromMealPlan: true,
-                    };
-                    newItems.push(newItem);
-                    existingNames.add(nameLower);
-                    addedCount++;
-                }
-            }
-
-            // make sure all categories from imported items exist
-            const newCategories = new Set(categories);
-            for (const ingredient of aggregatedItems) {
-                if (!newCategories.has(ingredient.category)) {
-                    newCategories.add(ingredient.category);
-                }
-            }
-            setCategories(Array.from(newCategories));
-
-            return newItems;
-        });
-
-        setImportedCount(addedCount);
-
-        // clear notification after 5 seconds
-        setTimeout(() => {
-            setImportedCount(0);
-        }, 5000);
-    };
-
-    // format quantity string for display
-    const formatQuantity = (amount: number, unit: string): string => {
-        if (!amount && !unit) return '';
-        if (!unit) return amount.toString();
-        return `${amount} ${unit}`;
-    };
+    }, [searchParams, isLoading, fetchItems, fetchCategories]);
 
     // editing handlers for grocery items
     const beginEdit = (item: GroceryItem) => {
@@ -221,87 +170,183 @@ function GroceryListContent() {
         setEditCategory('');
     };
 
-    // save edited item
-    const saveEdit = (id: string) => {
-        setItems(prev =>
-        prev.map(it =>
-            it.id === id
-            ? {
-                ...it,
-                name: editName.trim() || it.name,
-                quantity: editQuantity.trim() || undefined,
-                category: editCategory || it.category
-                }
-            : it
-        )
-        );
-        cancelEdit();
+    // save edited item via API
+    const saveEdit = async (id: number) => {
+        setIsSaving(true);
+        try {
+            const res = await authedFetch('/api/grocery', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    id,
+                    name: editName.trim(),
+                    quantity: editQuantity.trim() || null,
+                    category: editCategory,
+                }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setItems(prev => prev.map(it => it.id === id ? data.item : it));
+            }
+        } catch (error) {
+            console.error('Failed to update grocery item:', error);
+        } finally {
+            setIsSaving(false);
+            cancelEdit();
+        }
     };
 
     // handle keyboard events during editing
-    const handleEditKey = (e: React.KeyboardEvent, id: string) => {
+    const handleEditKey = (e: React.KeyboardEvent, id: number) => {
         if (e.key === 'Enter') saveEdit(id);
         if (e.key === 'Escape') cancelEdit();
     };
 
-    // add new grocery item to list
-    const addItem = () => {
+    // add new grocery item via API
+    const addItem = async () => {
         if (!newItem.trim()) return;
 
         const defaultCategory = categories[0] || 'Uncategorized';
-        const newGroceryItem: GroceryItem = {
-            id: Date.now().toString(),
-            name: newItem.trim(),
-            category: defaultCategory,
-            completed: false,
-        };
+        setIsSaving(true);
+        try {
+            const res = await authedFetch('/api/grocery', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: newItem.trim(),
+                    category: defaultCategory,
+                }),
+            });
 
-        setItems([...items, newGroceryItem]);
-        setNewItem('');
+            if (res.ok) {
+                const data = await res.json();
+                setItems(prev => {
+                    const existingIndex = prev.findIndex(i => i.id === data.item.id);
+                    if (existingIndex >= 0) {
+                        const updated = [...prev];
+                        updated[existingIndex] = data.item;
+                        return updated;
+                    }
+                    return [data.item, ...prev];
+                });
+                setNewItem('');
+            }
+        } catch (error) {
+            console.error('Failed to add grocery item:', error);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    // add new category to list
-    const addCategory = () => {
-        if (!newCategory.trim() || categories.includes(newCategory)) return;
+    // add new category via API
+    const addCategory = async () => {
+        if (!newCategory.trim() || categories.includes(newCategory.trim())) return;
 
-        setCategories([...categories, newCategory]);
-        setNewCategory('');
+        try {
+            const res = await authedFetch('/api/grocery/categories', {
+                method: 'POST',
+                body: JSON.stringify({ name: newCategory.trim() }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setCategories(prev => [...prev, data.category.name]);
+                setNewCategory('');
+            }
+        } catch (error) {
+            console.error('Failed to add category:', error);
+        }
     };
 
-    // toggle completion status of item
-    const toggleItem = (id: string) => {
-        setItems(items.map(item =>
-            item.id === id ? {...item, completed: !item.completed } : item
-        ));
+    // toggle completion status of item via API
+    const toggleItem = async (id: number) => {
+        const item = items.find(i => i.id === id);
+        if (!item) return;
+
+        try {
+            const res = await authedFetch('/api/grocery', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    id,
+                    completed: !item.completed,
+                }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setItems(prev => prev.map(it => it.id === id ? data.item : it));
+            }
+        } catch (error) {
+            console.error('Failed to toggle grocery item:', error);
+        }
     };
 
-    // delete item from list
-    const deleteItem = (id: string) => {
-        setItems(items.filter((item) => item.id !== id));
+    // delete item from list via API
+    const deleteItem = async (id: number) => {
+        try {
+            const res = await authedFetch(`/api/grocery?id=${id}`, {
+                method: 'DELETE',
+            });
+
+            if (res.ok) {
+                setItems(prev => prev.filter(item => item.id !== id));
+            }
+        } catch (error) {
+            console.error('Failed to delete grocery item:', error);
+        }
     };
 
-    // delete category and reassign its items
-    const deleteCategory = (category: string) => {
-        const newCategories = categories.filter(cat => cat !== category);
-        const fallbackCategory = newCategories[0] || 'Uncategorized';
+    // delete category and reassign its items via API
+    const deleteCategory = async (category: string) => {
+        try {
+            const res = await authedFetch(`/api/grocery/categories?name=${encodeURIComponent(category)}`, {
+                method: 'DELETE',
+            });
 
-        setItems(
-            items.map((item) =>
-                item.category === category ? { ...item, category: fallbackCategory } : item,
-            ),
-        );
-        setCategories(newCategories);
+            if (res.ok) {
+                const data = await res.json();
+                // Update categories list
+                setCategories(prev => prev.filter(c => c !== category));
+                // Update items with reassigned category
+                setItems(prev => prev.map(item =>
+                    item.category === category ? { ...item, category: data.reassignedTo } : item
+                ));
+            }
+        } catch (error) {
+            console.error('Failed to delete category:', error);
+        }
     };
 
-    // clear all completed items
-    const clearCompleted = () => {
-        setItems(items.filter(item => !item.completed));
+    // clear all completed items via API
+    const clearCompleted = async () => {
+        try {
+            const res = await authedFetch('/api/grocery/clear', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'completed' }),
+            });
+
+            if (res.ok) {
+                setItems(prev => prev.filter(item => !item.completed));
+            }
+        } catch (error) {
+            console.error('Failed to clear completed items:', error);
+        }
     };
 
-    // clear all items from list
-    const clearAll = () => {
-        setItems([]);
-        cancelEdit();
+    // clear all items from list via API
+    const clearAll = async () => {
+        try {
+            const res = await authedFetch('/api/grocery/clear', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'all' }),
+            });
+
+            if (res.ok) {
+                setItems([]);
+                cancelEdit();
+            }
+        } catch (error) {
+            console.error('Failed to clear all items:', error);
+        }
     };
 
     // filter items based on selected filter
@@ -339,6 +384,11 @@ function GroceryListContent() {
                     <AppHeader title="Grocery List" />
 
                     <main className="relative flex-1 p-6 bg-muted/20">
+                        {isLoading ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : (
                         <div className="max-w-6xl mx-auto space-y-6">
                             {/* import notification */}
                             {importedCount > 0 && (
@@ -428,7 +478,9 @@ function GroceryListContent() {
                                                 onKeyDown={(e) => handleKeyPress(e, addItem)}
                                                 className="flex-1 min-w-[140px]"
                                             />
-                                            <Button onClick={addItem}>Add</Button>
+                                            <Button onClick={addItem} disabled={isSaving}>
+                                                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
+                                            </Button>
                                             <Button
                                                 type="button"
                                                 variant="outline"
@@ -579,8 +631,12 @@ function GroceryListContent() {
 
                                                                         </div>
                                                                         <div className="flex gap-2">
-                                                                            <Button size="sm" onClick={() => saveEdit(item.id)}>
-                                                                                <Save className="h-4 w-4 mr-1" />
+                                                                            <Button size="sm" onClick={() => saveEdit(item.id)} disabled={isSaving}>
+                                                                                {isSaving ? (
+                                                                                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                                                                ) : (
+                                                                                    <Save className="h-4 w-4 mr-1" />
+                                                                                )}
                                                                                 Save
                                                                             </Button>
                                                                             <Button variant="ghost" size="sm" onClick={cancelEdit}>
@@ -663,6 +719,7 @@ function GroceryListContent() {
                                 </Card>
                             )}
                         </div>
+                        )}
                         <ImageClassificationDialog
                             open={imageDialogOpen}
                             onOpenChange={setImageDialogOpen}

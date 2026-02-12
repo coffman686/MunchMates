@@ -4,7 +4,7 @@
 // and respects user dietary preferences/intolerances pulled from their profile.
 // Integrates with Spoonacular search API for external recipes and a custom
 // "Create Recipe" dialog that posts user-authored recipes to /api/recipes/create.
-// Also manages local favorite recipes via `saved-recipes` in localStorage so users
+// Also manages favorite recipes via the saved-recipes API so users
 // can toggle hearts in the grid and access them later from the Saved Recipes view.
 
 'use client';
@@ -27,9 +27,6 @@ import { Search, Plus, Clock, Users, ChefHat, Filter, Star, Heart, X } from 'luc
 import { useRouter } from 'next/navigation';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { getDiets, getIntolerances } from '@/components/ingredients/Dietary';
-
-// localStorage key for saved recipes
-const SAVED_RECIPES_STORAGE_KEY = 'saved-recipes';
 
 type SavedRecipe = {
     recipeId: number;
@@ -225,30 +222,31 @@ const Recipes = () => {
 
     const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
     const [savedRecipeIds, setSavedRecipeIds] = useState<Set<number>>(new Set());
-    const [isLoaded, setIsLoaded] = useState(false);
 
-    // Load saved recipes from localStorage on mount
+    // Load saved recipes from API on mount
     useEffect(() => {
-        const savedData = localStorage.getItem(SAVED_RECIPES_STORAGE_KEY);
-        if (savedData) {
+        let cancelled = false;
+        const loadSaved = async () => {
             try {
-                const recipes: SavedRecipe[] = JSON.parse(savedData);
-                setSavedRecipes(recipes);
-                setSavedRecipeIds(new Set(recipes.map(r => r.recipeId)));
+                const res = await authedFetch('/api/recipes/saved');
+                if (cancelled) return;
+                if (res.status === 401) {
+                    setTimeout(loadSaved, 300);
+                    return;
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    const recipes: SavedRecipe[] = data.recipes || [];
+                    setSavedRecipes(recipes);
+                    setSavedRecipeIds(new Set(recipes.map(r => r.recipeId)));
+                }
             } catch (error) {
                 console.error('Error loading saved recipes:', error);
             }
-        }
-        setIsLoaded(true);
+        };
+        loadSaved();
+        return () => { cancelled = true; };
     }, []);
-
-    // Save to localStorage whenever savedRecipes changes
-    useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(SAVED_RECIPES_STORAGE_KEY, JSON.stringify(savedRecipes));
-            setSavedRecipeIds(new Set(savedRecipes.map(r => r.recipeId)));
-        }
-    }, [savedRecipes, isLoaded]);
 
     const handleAddIngredient = () => {
         if (newIngredient.trim()) {
@@ -308,6 +306,7 @@ const Recipes = () => {
 
             const data = await response.json();
             console.log('Recipe created successfully:', data);
+
             // Close dialog and reset form
             setShowCreateDialog(false);
             setRecipeFormData({
@@ -335,11 +334,8 @@ const Recipes = () => {
         setShowCreateDialog(true);
     };
 
-    const handleSaveRecipe = (recipeId: number, recipeName: string, recipeImage?: string) => {
-        // Check if already saved
-        if (savedRecipeIds.has(recipeId)) {
-            return;
-        }
+    const handleSaveRecipe = async (recipeId: number, recipeName: string, recipeImage?: string) => {
+        if (savedRecipeIds.has(recipeId)) return;
 
         const newSavedRecipe: SavedRecipe = {
             recipeId,
@@ -349,10 +345,31 @@ const Recipes = () => {
         };
 
         setSavedRecipes(prev => [...prev, newSavedRecipe]);
+        setSavedRecipeIds(prev => new Set(prev).add(recipeId));
+
+        try {
+            await authedFetch('/api/recipes/saved', {
+                method: 'POST',
+                body: JSON.stringify({ recipeId, recipeName, recipeImage }),
+            });
+        } catch (error) {
+            console.error('Error saving recipe:', error);
+        }
     };
 
-    const handleRemoveSavedRecipe = (recipeId: number) => {
+    const handleRemoveSavedRecipe = async (recipeId: number) => {
         setSavedRecipes(prev => prev.filter(r => r.recipeId !== recipeId));
+        setSavedRecipeIds(prev => {
+            const next = new Set(prev);
+            next.delete(recipeId);
+            return next;
+        });
+
+        try {
+            await authedFetch(`/api/recipes/saved?recipeId=${recipeId}`, { method: 'DELETE' });
+        } catch (error) {
+            console.error('Error removing saved recipe:', error);
+        }
     };
 
     // main render for Recipes component
@@ -398,6 +415,16 @@ const Recipes = () => {
                                         <Heart className="h-4 w-4" />
                                         Saved Recipes
                                     </Button>
+
+                                    <Button
+                                        type="button"
+                                        onClick={() => router.push('/recipes/my-recipes')}
+                                        className="inline-flex items-center gap-2"
+                                        variant="outline"
+                                    >
+                                        <ChefHat className="h-4 w-4" />
+                                        My Recipes
+                                    </Button>
                                 </DynamicList>
 
 
@@ -440,7 +467,7 @@ const Recipes = () => {
                                     </Select>
 
                                 </div>
-                                {/* Recipe Grid */}
+                                {/* Spoonacular Search Results Grid */}
                                 {recipes && recipes.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                         {recipes.map(recipe => (
@@ -528,7 +555,7 @@ const Recipes = () => {
                                                     </h3>
                                                 </div>
                                             )}
-                                            {searchTerm && (selectedDishType !== 'All' || selectedCuisine !== 'All') && !isLoading && (
+                                            {searchTerm && !isLoading && (
                                                 <div>
                                                     <ChefHat className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
                                                     <h3 className="text-lg font-semibold mb-2">

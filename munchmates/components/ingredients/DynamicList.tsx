@@ -2,9 +2,9 @@
 // List that supports a dynamic number of items and several views (list, ship, etc)
 // Paired with Autosuggest to provide ingredient display and input component
 // - Completes items from presupplied list of ingredients and currently selected items
-// - Provides additional dropdowns grocery list and pantry items
+// - Provides additional dropdowns grocery list and pantry items (fetched via API)
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Autosuggest from "./Autosuggest";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -17,14 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-
-// Storage key must match grocery-list page
-const GROCERY_LIST_STORAGE_KEY = 'munchmates_grocery_list';
-// Storage key must match pantry page
-const PANTRY_STORAGE_KEY = 'munchmates_pantry';
+import { authedFetch } from "@/lib/authedFetch";
 
 interface GroceryItem {
-  id: string;
+  id: number;
   name: string;
   category: string;
   completed: boolean;
@@ -36,8 +32,8 @@ interface PantryItem {
   name: string;
   quantity: string;
   category: string;
-  expiryDate?: string;
-  addedDate: string;
+  expiryDate?: string | null;
+  addedAt: string;
 }
 
 const data = [
@@ -431,47 +427,37 @@ export default function IngredientList({
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
 
-  // Load grocery list and pantry from localStorage
+  // Fetch grocery list from API
+  const loadGroceryList = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/grocery');
+      if (res.ok) {
+        const data = await res.json();
+        setGroceryItems(data.items || []);
+      }
+    } catch {
+      setGroceryItems([]);
+    }
+  }, []);
+
+  // Fetch pantry items from API
+  const loadPantryItems = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/pantry');
+      if (res.ok) {
+        const data = await res.json();
+        setPantryItems(data.items || []);
+      }
+    } catch {
+      setPantryItems([]);
+    }
+  }, []);
+
+  // Load data on mount
   useEffect(() => {
-    const loadGroceryList = () => {
-      const stored = localStorage.getItem(GROCERY_LIST_STORAGE_KEY);
-      if (stored) {
-        try {
-          setGroceryItems(JSON.parse(stored));
-        } catch {
-          setGroceryItems([]);
-        }
-      }
-    };
-
-    const loadPantryItems = () => {
-      const stored = localStorage.getItem(PANTRY_STORAGE_KEY);
-      if (stored) {
-        try {
-          setPantryItems(JSON.parse(stored));
-        } catch {
-          setPantryItems([]);
-        }
-      }
-    };
-
-    // Load initially
     loadGroceryList();
     loadPantryItems();
-
-    // Listen for storage changes (when grocery list or pantry is updated in another tab/component)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === GROCERY_LIST_STORAGE_KEY) {
-        loadGroceryList();
-      }
-      if (e.key === PANTRY_STORAGE_KEY) {
-        loadPantryItems();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [loadGroceryList, loadPantryItems]);
 
   // Get unique, non-completed grocery items that aren't already in the ingredients list
   const availableGroceryItems = groceryItems

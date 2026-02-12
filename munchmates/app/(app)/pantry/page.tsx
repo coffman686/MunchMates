@@ -1,24 +1,21 @@
 // Pantry Page
-// Implements the MunchMates pantry management experience with rich local persistence
+// Implements the MunchMates pantry management experience with database persistence
 // and support for expiry-awareness and image-based item entry.
 //
 // Features:
 // - Auth-gated page wrapped in RequireAuth + SidebarProvider + AppSidebar/AppHeader
 //   so it fits the main application shell.
-// - Local persistence with PANTRY_STORAGE_KEY (`munchmates_pantry`) so the pantry
-//   survives reloads without requiring a backend.
-// - Seeded with `defaultItems` for an initial, non-empty experience when there is no
-//   stored pantry yet or parsing fails.
+// - Database persistence via /api/pantry — data syncs across devices
 // - Add Item form:
 //   - Name, quantity, category (via <Select>), optional expiry date
-//   - “Add via image” opens ImageClassificationDialog and pre-fills the item name
+//   - "Add via image" opens ImageClassificationDialog and pre-fills the item name
 //   - Enter key support to quickly add items from the keyboard.
 // - Inline edit support per item:
 //   - Click the pencil icon to edit name, quantity, category, and expiry date
 //   - Save/Cancel actions, with Enter/Escape keyboard handling.
 // - Deletion controls:
 //   - Per-item delete (trash icon)
-//   - “Clear All” button to wipe the pantry and reset any in-progress edits.
+//   - "Clear All" button to wipe the pantry and reset any in-progress edits.
 // - Expiry awareness:
 //   - getDaysUntilExpiry / getExpiryStatus determine status badges:
 //     * Expired (red / destructive)
@@ -32,8 +29,8 @@
 // - Grouping & layout:
 //   - Items are grouped by category (itemsByCategory) and rendered in category cards
 //     with a count badge per category.
-//   - Empty states differentiate between “no results for current search/filter” and
-//     “pantry is completely empty,” with a CTA to add the first item.
+//   - Empty states differentiate between "no results for current search/filter" and
+//     "pantry is completely empty," with a CTA to add the first item.
 // - Stats header:
 //   - Total items
 //   - Items expiring soon (within 7 days)
@@ -43,7 +40,7 @@
 'use client';
 
 // import all necessary modules and components
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AppHeader from '@/components/layout/app-header';
 import RequireAuth from '@/components/RequireAuth';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -52,8 +49,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Search, Filter, ShoppingBag, Calendar, PencilLine, Save, X } from 'lucide-react';
+import { Plus, Trash2, Search, Filter, ShoppingBag, Calendar, PencilLine, Save, X, Loader2 } from 'lucide-react';
 import ImageClassificationDialog from '@/components/image-classification-dialog';
+import { authedFetch } from '@/lib/authedFetch';
 import {
     Select,
     SelectTrigger,
@@ -68,8 +66,8 @@ interface PantryItem {
     name: string;
     quantity: string;
     category: string;
-    expiryDate?: string;
-    addedDate: string;
+    expiryDate?: string | null;
+    addedAt: string;
 }
 
 const categories = [
@@ -90,38 +88,14 @@ const categories = [
     'Other'
 ];
 
-// storage key for pantry persistence
-export const PANTRY_STORAGE_KEY = 'munchmates_pantry';
-
-// default pantry items for initial load
-// testing and demonstration purposes
-// these can be removed in production
-const defaultItems: PantryItem[] = [
-    { id: 1, name: 'All-Purpose Flour', quantity: '2 lbs', category: 'Grains & Flour', addedDate: '2024-01-15' },
-    { id: 2, name: 'Granulated Sugar', quantity: '1 lb', category: 'Sweeteners', addedDate: '2024-01-10' },
-    { id: 3, name: 'Large Eggs', quantity: '12', category: 'Dairy & Eggs', expiryDate: '2024-02-01', addedDate: '2024-01-20' },
-    { id: 4, name: 'Olive Oil', quantity: '500 ml', category: 'Oils & Vinegars', addedDate: '2024-01-05' },
-    { id: 5, name: 'Canned Tomatoes', quantity: '2 cans', category: 'Canned Goods', expiryDate: '2025-01-01', addedDate: '2024-01-12' },
-];
-
 // main Pantry component
 // handles pantry item management
 // including adding, editing, deleting, searching, and filtering
 const Pantry = () => {
-    // Retrieves pantry items per user from browser local storage
-    const [items, setItems] = useState<PantryItem[]>(() => {
-        if (typeof window !== 'undefined') {
-            const stored = localStorage.getItem(PANTRY_STORAGE_KEY);
-            if (stored) {
-                try {
-                    return JSON.parse(stored);
-                } catch {
-                    return defaultItems;
-                }
-            }
-        }
-        return defaultItems;
-    });
+    // Pantry items from database
+    const [items, setItems] = useState<PantryItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
 
     const [itemName, setItemName] = useState('');
     const [itemQuantity, setItemQuantity] = useState('');
@@ -138,10 +112,24 @@ const Pantry = () => {
 
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
-    // persist pantry items to localStorage on changes
+    // Fetch pantry items from API on mount
+    const fetchItems = useCallback(async () => {
+        try {
+            const res = await authedFetch('/api/pantry');
+            if (res.ok) {
+                const data = await res.json();
+                setItems(data.items || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch pantry items:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
-        localStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify(items));
-    }, [items]);
+        fetchItems();
+    }, [fetchItems]);
 
     // functions to handle editing pantry items
     const beginEdit = (item: PantryItem) => {
@@ -161,22 +149,33 @@ const Pantry = () => {
         setEditExpiry('');
     };
 
-    // save edited item details
-    const saveEdit = (id: number) => {
-        setItems(prev =>
-        prev.map(it =>
-            it.id === id
-            ? {
-                ...it,
-                name: editName.trim() || it.name,
-                quantity: editQuantity.trim() || it.quantity,
-                category: editCategory || it.category,
-                expiryDate: editExpiry.trim() ? editExpiry : undefined
-                }
-            : it
-        )
-        );
-        cancelEdit();
+    // save edited item details via API
+    const saveEdit = async (id: number) => {
+        setIsSaving(true);
+        try {
+            const res = await authedFetch('/api/pantry', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    id,
+                    name: editName.trim(),
+                    quantity: editQuantity.trim(),
+                    category: editCategory,
+                    expiryDate: editExpiry.trim() || null,
+                }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setItems(prev =>
+                    prev.map(it => it.id === id ? data.item : it)
+                );
+            }
+        } catch (error) {
+            console.error('Failed to update pantry item:', error);
+        } finally {
+            setIsSaving(false);
+            cancelEdit();
+        }
     };
 
     // handle keyboard events during editing
@@ -185,33 +184,74 @@ const Pantry = () => {
         if (e.key === 'Escape') cancelEdit();
     };
 
-    // function to add new pantry item
+    // function to add new pantry item via API
     // validates input before adding
-    const addItem = () => {
+    const addItem = async () => {
         if (itemName.trim() !== '' && itemQuantity.trim() !== '') {
-            const newItem: PantryItem = {
-                id: Date.now(),
-                name: itemName.trim(),
-                quantity: itemQuantity.trim(),
-                category: itemCategory,
-                expiryDate: expiryDate || undefined,
-                addedDate: new Date().toISOString().split('T')[0],
-            };
-            setItems([...items, newItem]);
-            setItemName('');
-            setItemQuantity('');
-            setExpiryDate('');
-            setItemCategory(categories[0]);
+            setIsSaving(true);
+            try {
+                const res = await authedFetch('/api/pantry', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: itemName.trim(),
+                        quantity: itemQuantity.trim(),
+                        category: itemCategory,
+                        expiryDate: expiryDate || null,
+                    }),
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    // Add new item to list or update if it was an upsert
+                    setItems(prev => {
+                        const existingIndex = prev.findIndex(i => i.id === data.item.id);
+                        if (existingIndex >= 0) {
+                            const updated = [...prev];
+                            updated[existingIndex] = data.item;
+                            return updated;
+                        }
+                        return [data.item, ...prev];
+                    });
+                    setItemName('');
+                    setItemQuantity('');
+                    setExpiryDate('');
+                    setItemCategory(categories[0]);
+                }
+            } catch (error) {
+                console.error('Failed to add pantry item:', error);
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
-    // function to remove pantry item by id
-    const removeItem = (id: number) => {
-        setItems(items.filter(item => item.id !== id));
+    // function to remove pantry item by id via API
+    const removeItem = async (id: number) => {
+        try {
+            const res = await authedFetch(`/api/pantry?id=${id}`, {
+                method: 'DELETE',
+            });
+
+            if (res.ok) {
+                setItems(items.filter(item => item.id !== id));
+            }
+        } catch (error) {
+            console.error('Failed to delete pantry item:', error);
+        }
     };
 
-    // function to clear all pantry items
-    const clearAll = () => {
+    // function to clear all pantry items via API
+    const clearAll = async () => {
+        // Delete items one by one (no bulk delete endpoint for pantry)
+        for (const item of items) {
+            try {
+                await authedFetch(`/api/pantry?id=${item.id}`, {
+                    method: 'DELETE',
+                });
+            } catch (error) {
+                console.error('Failed to delete pantry item:', error);
+            }
+        }
         setItems([]);
         cancelEdit();
     };
@@ -226,7 +266,7 @@ const Pantry = () => {
     };
 
     // determines expiry status label and variant
-    const getExpiryStatus = (expiryDate?: string) => {
+    const getExpiryStatus = (expiryDate?: string | null) => {
         if (!expiryDate) return null;
 
         const daysUntilExpiry = getDaysUntilExpiry(expiryDate);
@@ -279,6 +319,11 @@ const Pantry = () => {
                     <div className="flex-1 flex flex-col">
                         <AppHeader title="Pantry" />
                         <main className="relative flex-1 p-6 bg-muted/20">
+                            {isLoading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : (
                             <div className="max-w-6xl mx-auto space-y-6">
                                 {/* render stats overview */}
                                 <div className="grid gap-4 md:grid-cols-3">
@@ -358,8 +403,12 @@ const Pantry = () => {
                                         </div>
 
                                         <div className="mt-4 flex flex-wrap gap-2">
-                                            <Button onClick={addItem} className="flex items-center gap-2">
-                                                <Plus className="h-4 w-4" />
+                                            <Button onClick={addItem} className="flex items-center gap-2" disabled={isSaving}>
+                                                {isSaving ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Plus className="h-4 w-4" />
+                                                )}
                                                 Add to Pantry
                                             </Button>
                                             <Button
@@ -464,7 +513,7 @@ const Pantry = () => {
                                                                                 )}
                                                                                 <p className="text-xs text-muted-foreground">
                                                                                     Added:{' '}
-                                                                                    {new Date(item.addedDate).toLocaleDateString()}
+                                                                                    {new Date(item.addedAt).toLocaleDateString()}
                                                                                 </p>
                                                                             </div>
                                                                             <div className="flex gap-1">
@@ -583,6 +632,7 @@ const Pantry = () => {
                                     )}
                                 </div>
                             </div>
+                            )}
                             <ImageClassificationDialog
                                 open={imageDialogOpen}
                                 onOpenChange={setImageDialogOpen}

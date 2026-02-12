@@ -1,33 +1,31 @@
 // app/api/profile/route.ts
-// Endpoint to retrieve and update user profile data in memory for local persistence
-// Temporary until munchmates goes public and we can afford 200 petabytes (onsite, no redundancy) to appease the shareholders
+// Endpoint to retrieve and update user profile preferences (cuisines, diets, intolerances)
+// Backed by Postgres via Prisma — data persists across server restarts
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyBearer } from "@/lib/verifyToken";
-
-type ProfileData = {
-    favoriteCuisines: string;
-    diets: string[];
-    intolerances: string[];
-};
-
-// Simple in-memory store keyed by user sub
-const profiles = new Map<string, ProfileData>();
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
-        const existing =
-            profiles.get(p.sub) ?? {
-                favoriteCuisines: "",
-                diets: [],
-                intolerances: [],
-            };
+        const profile = await prisma.userProfile.findUnique({
+            where: { userId: p.sub },
+        });
 
-        return NextResponse.json(existing);
-    } catch (e) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        // Return stored profile or defaults
+        return NextResponse.json({
+            favoriteCuisines: profile?.favoriteCuisines ?? "",
+            diets: profile?.diets ?? [],
+            intolerances: profile?.intolerances ?? [],
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        console.error("Error in GET /api/profile:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
@@ -36,16 +34,38 @@ export async function POST(req: NextRequest) {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const body = await req.json();
 
-        const update: ProfileData = {
+        const data = {
             favoriteCuisines: body.favoriteCuisines ?? "",
             diets: body.diets ?? [],
             intolerances: body.intolerances ?? [],
         };
 
-        profiles.set(p.sub, update);
+        // Ensure User record exists, then upsert profile
+        await prisma.user.upsert({
+            where: { id: p.sub },
+            update: {},
+            create: { id: p.sub },
+        });
 
-        return NextResponse.json({ ok: true, profile: update });
-    } catch (e) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        const profile = await prisma.userProfile.upsert({
+            where: { userId: p.sub },
+            update: data,
+            create: { userId: p.sub, ...data },
+        });
+
+        return NextResponse.json({
+            ok: true,
+            profile: {
+                favoriteCuisines: profile.favoriteCuisines,
+                diets: profile.diets,
+                intolerances: profile.intolerances,
+            },
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message === "no token") {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        console.error("Error in POST /api/profile:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
