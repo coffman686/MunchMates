@@ -52,6 +52,8 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Search, Filter, ShoppingBag, Calendar, PencilLine, Save, X, Loader2 } from 'lucide-react';
 import ImageClassificationDialog from '@/components/image-classification-dialog';
 import { authedFetch } from '@/lib/authedFetch';
+import ApiErrorBanner from '@/components/ui/api-error-banner';
+import { assertOk, getErrorMessage, isValidationError } from '@/lib/apiClient';
 import {
     Select,
     SelectTrigger,
@@ -69,6 +71,8 @@ interface PantryItem {
     expiryDate?: string | null;
     addedAt: string;
 }
+
+type RetryAction = () => void | Promise<void>;
 
 const categories = [
     'Grains & Flour',
@@ -96,6 +100,7 @@ const Pantry = () => {
     const [items, setItems] = useState<PantryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [apiError, setApiError] = useState<{ message: string; isValidation: boolean; onRetry?: RetryAction } | null>(null);
 
     const [itemName, setItemName] = useState('');
     const [itemQuantity, setItemQuantity] = useState('');
@@ -112,22 +117,32 @@ const Pantry = () => {
 
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
+    const clearError = () => setApiError(null);
+
+    const setUiError = (error: unknown, fallbackMessage: string, onRetry?: RetryAction) => {
+        setApiError({
+            message: getErrorMessage(error, fallbackMessage),
+            isValidation: isValidationError(error),
+            onRetry,
+        });
+    };
+
     // Fetch pantry items from API on mount
     const fetchItems = useCallback(async () => {
         try {
             const res = await authedFetch('/api/pantry');
-            if (res.ok) {
-                const data = await res.json();
-                setItems(data.items || []);
-            }
+            await assertOk(res, 'Failed to fetch pantry items');
+            const data = await res.json();
+            setItems(data.items || []);
         } catch (error) {
-            console.error('Failed to fetch pantry items:', error);
+            setUiError(error, 'Failed to fetch pantry items', fetchItems);
         } finally {
             setIsLoading(false);
         }
     }, []);
 
     useEffect(() => {
+        clearError();
         fetchItems();
     }, [fetchItems]);
 
@@ -151,6 +166,7 @@ const Pantry = () => {
 
     // save edited item details via API
     const saveEdit = async (id: number) => {
+        clearError();
         setIsSaving(true);
         try {
             const res = await authedFetch('/api/pantry', {
@@ -164,17 +180,16 @@ const Pantry = () => {
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setItems(prev =>
-                    prev.map(it => it.id === id ? data.item : it)
-                );
-            }
+            await assertOk(res, 'Failed to update pantry item');
+            const data = await res.json();
+            setItems(prev =>
+                prev.map(it => it.id === id ? data.item : it)
+            );
+            cancelEdit();
         } catch (error) {
-            console.error('Failed to update pantry item:', error);
+            setUiError(error, 'Failed to update pantry item', () => saveEdit(id));
         } finally {
             setIsSaving(false);
-            cancelEdit();
         }
     };
 
@@ -187,72 +202,82 @@ const Pantry = () => {
     // function to add new pantry item via API
     // validates input before adding
     const addItem = async () => {
-        if (itemName.trim() !== '' && itemQuantity.trim() !== '') {
-            setIsSaving(true);
-            try {
-                const res = await authedFetch('/api/pantry', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        name: itemName.trim(),
-                        quantity: itemQuantity.trim(),
-                        category: itemCategory,
-                        expiryDate: expiryDate || null,
-                    }),
-                });
+        if (itemName.trim() === '' || itemQuantity.trim() === '') {
+            setApiError({
+                message: 'Name and quantity are required',
+                isValidation: true,
+            });
+            return;
+        }
 
-                if (res.ok) {
-                    const data = await res.json();
-                    // Add new item to list or update if it was an upsert
-                    setItems(prev => {
-                        const existingIndex = prev.findIndex(i => i.id === data.item.id);
-                        if (existingIndex >= 0) {
-                            const updated = [...prev];
-                            updated[existingIndex] = data.item;
-                            return updated;
-                        }
-                        return [data.item, ...prev];
-                    });
-                    setItemName('');
-                    setItemQuantity('');
-                    setExpiryDate('');
-                    setItemCategory(categories[0]);
+        clearError();
+        setIsSaving(true);
+        try {
+            const res = await authedFetch('/api/pantry', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: itemName.trim(),
+                    quantity: itemQuantity.trim(),
+                    category: itemCategory,
+                    expiryDate: expiryDate || null,
+                }),
+            });
+
+            await assertOk(res, 'Failed to add pantry item');
+            const data = await res.json();
+            // Add new item to list or update if it was an upsert
+            setItems(prev => {
+                const existingIndex = prev.findIndex(i => i.id === data.item.id);
+                if (existingIndex >= 0) {
+                    const updated = [...prev];
+                    updated[existingIndex] = data.item;
+                    return updated;
                 }
-            } catch (error) {
-                console.error('Failed to add pantry item:', error);
-            } finally {
-                setIsSaving(false);
-            }
+                return [data.item, ...prev];
+            });
+            setItemName('');
+            setItemQuantity('');
+            setExpiryDate('');
+            setItemCategory(categories[0]);
+        } catch (error) {
+            setUiError(error, 'Failed to add pantry item', addItem);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     // function to remove pantry item by id via API
     const removeItem = async (id: number) => {
+        clearError();
         try {
             const res = await authedFetch(`/api/pantry?id=${id}`, {
                 method: 'DELETE',
             });
 
-            if (res.ok) {
-                setItems(items.filter(item => item.id !== id));
-            }
+            await assertOk(res, 'Failed to delete pantry item');
+            setItems(prev => prev.filter(item => item.id !== id));
         } catch (error) {
-            console.error('Failed to delete pantry item:', error);
+            setUiError(error, 'Failed to delete pantry item', () => removeItem(id));
         }
     };
 
     // function to clear all pantry items via API
     const clearAll = async () => {
+        clearError();
         // Delete items one by one (no bulk delete endpoint for pantry)
         for (const item of items) {
             try {
-                await authedFetch(`/api/pantry?id=${item.id}`, {
+                const res = await authedFetch(`/api/pantry?id=${item.id}`, {
                     method: 'DELETE',
                 });
+                await assertOk(res, 'Failed to clear pantry');
+                // Remove from state incrementally so partial failures don't leave stale items
+                setItems(prev => prev.filter(i => i.id !== item.id));
             } catch (error) {
-                console.error('Failed to delete pantry item:', error);
+                setUiError(error, 'Failed to clear pantry', clearAll);
+                return;
             }
         }
-        setItems([]);
         cancelEdit();
     };
 
@@ -320,11 +345,25 @@ const Pantry = () => {
                         <AppHeader title="Pantry" />
                         <main className="relative flex-1 p-6 bg-muted/20">
                             {isLoading ? (
-                                <div className="flex items-center justify-center py-12">
-                                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                                </div>
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
                             ) : (
                             <div className="max-w-6xl mx-auto space-y-6">
+                                {apiError ? (
+                                    <ApiErrorBanner
+                                        message={apiError.message}
+                                        isValidation={apiError.isValidation}
+                                        onDismiss={clearError}
+                                        onRetry={() => {
+                                            if (apiError.onRetry) {
+                                                void apiError.onRetry();
+                                                return;
+                                            }
+                                            void fetchItems();
+                                        }}
+                                    />
+                                ) : null}
                                 {/* render stats overview */}
                                 <div className="grid gap-4 md:grid-cols-3">
                                     <Card>

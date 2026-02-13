@@ -9,6 +9,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
@@ -30,36 +31,24 @@ export async function POST(req: NextRequest, context: RouteContext) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         // Check if user is owner or editor
         const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember || userMember.role === 'viewer') {
-            return NextResponse.json(
-                { error: "You don't have permission to add members" },
-                { status: 403 }
-            );
+            return errorResponse(403, "You don't have permission to add members");
         }
 
         const body = await req.json();
         const { memberId, memberName, role = 'viewer' } = body;
 
         if (!memberId || !memberName) {
-            return NextResponse.json(
-                { error: "memberId and memberName are required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "memberId and memberName are required");
         }
 
         if (!['editor', 'viewer'].includes(role)) {
-            return NextResponse.json(
-                { error: "Role must be 'editor' or 'viewer'" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Role must be 'editor' or 'viewer'");
         }
 
         // Check if member already exists
@@ -98,11 +87,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
             collection: formatCollection(updated!),
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in POST /api/shared-collections/[id]/members:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in POST /api/shared-collections/[id]/members:");
     }
 }
 
@@ -116,10 +101,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         const memberId = req.nextUrl.searchParams.get("memberId");
 
         if (!memberId) {
-            return NextResponse.json(
-                { error: "memberId parameter is required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "memberId parameter is required");
         }
 
         const collection = await prisma.sharedCollection.findUnique({
@@ -128,34 +110,22 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         // Check if user is owner
         const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember || userMember.role !== 'owner') {
-            return NextResponse.json(
-                { error: "Only the owner can remove members" },
-                { status: 403 }
-            );
+            return errorResponse(403, "Only the owner can remove members");
         }
 
         const targetMember = collection.members.find(m => m.userId === memberId);
         if (!targetMember) {
-            return NextResponse.json(
-                { error: "Member not found in collection" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Member not found in collection");
         }
 
         if (targetMember.role === 'owner') {
-            return NextResponse.json(
-                { error: "Cannot remove the owner from the collection" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Cannot remove the owner from the collection");
         }
 
         await prisma.collectionMember.delete({
@@ -173,11 +143,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
             collection: formatCollection(updated!),
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in DELETE /api/shared-collections/[id]/members:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/shared-collections/[id]/members:");
     }
 }
 
@@ -194,51 +160,33 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         // Check if user is owner
         const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember || userMember.role !== 'owner') {
-            return NextResponse.json(
-                { error: "Only the owner can change member roles" },
-                { status: 403 }
-            );
+            return errorResponse(403, "Only the owner can change member roles");
         }
 
         const body = await req.json();
         const { memberId, role } = body;
 
         if (!memberId || !role) {
-            return NextResponse.json(
-                { error: "memberId and role are required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "memberId and role are required");
         }
 
         if (!['editor', 'viewer'].includes(role)) {
-            return NextResponse.json(
-                { error: "Role must be 'editor' or 'viewer'" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Role must be 'editor' or 'viewer'");
         }
 
         const targetMember = collection.members.find(m => m.userId === memberId);
         if (!targetMember) {
-            return NextResponse.json(
-                { error: "Member not found in collection" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Member not found in collection");
         }
 
         if (targetMember.role === 'owner') {
-            return NextResponse.json(
-                { error: "Cannot change the owner's role" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Cannot change the owner's role");
         }
 
         await prisma.collectionMember.update({
@@ -257,10 +205,6 @@ export async function PUT(req: NextRequest, context: RouteContext) {
             collection: formatCollection(updated!),
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in PUT /api/shared-collections/[id]/members:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in PUT /api/shared-collections/[id]/members:");
     }
 }

@@ -3,6 +3,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts
 
 import { NextRequest, NextResponse } from "next/server";
+import { handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
@@ -21,11 +22,7 @@ export async function GET(req: NextRequest) {
             intolerances: profile?.intolerances ?? [],
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in GET /api/profile:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/profile:");
     }
 }
 
@@ -62,10 +59,6 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in POST /api/profile:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in POST /api/profile:");
     }
 }

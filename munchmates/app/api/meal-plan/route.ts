@@ -11,6 +11,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { WeeklyMealPlan, DayPlan, MealPlanEntry } from "@/lib/types/meal-plan";
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
 
     const weekStart = req.nextUrl.searchParams.get("weekStart");
     if (!weekStart) {
-      return NextResponse.json({ error: "weekStart parameter required" }, { status: 400 });
+      return errorResponse(400, "weekStart parameter required");
     }
 
     const mealPlan = await prisma.weeklyMealPlan.findUnique({
@@ -91,11 +92,7 @@ export async function GET(req: NextRequest) {
     const plan = buildWeeklyPlan(weekStart, mealPlan.meals, days);
     return NextResponse.json({ plan });
   } catch (error) {
-    if (error instanceof Error && error.message === "no token") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("Error in GET /api/meal-plan:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return handleRouteError(error, "Error in GET /api/meal-plan:");
   }
 }
 
@@ -106,7 +103,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (!body.plan || !body.plan.weekStart) {
-      return NextResponse.json({ error: "Invalid meal plan data" }, { status: 400 });
+      return errorResponse(400, "Invalid meal plan data");
     }
 
     const plan: WeeklyMealPlan = body.plan;
@@ -173,10 +170,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, plan });
   } catch (error) {
-    if (error instanceof Error && error.message === "no token") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("Error in POST /api/meal-plan:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return handleRouteError(error, "Error in POST /api/meal-plan:");
   }
 }

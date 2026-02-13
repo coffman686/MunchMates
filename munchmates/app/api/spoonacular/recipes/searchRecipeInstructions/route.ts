@@ -7,13 +7,14 @@
 // - 500 otherwise
 
 import { NextRequest, NextResponse } from 'next/server';
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { getRecipeInstructions } from '@/lib/spoonacular';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const idParam = searchParams.get('id');
     if (!idParam) {
-        return NextResponse.json({ error: 'Missing id parameter' }, { status: 400 });
+        return errorResponse(400, 'Missing id parameter');
     }
     try {
         const id = parseInt(idParam, 10);
@@ -21,6 +22,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ instructions });
     }
     catch (error) {
-        return NextResponse.json({ error: 'Failed to fetch recipe instructions' }, { status: 500 });
+        return handleRouteError(error, 'Failed to fetch recipe instructions');
     }
 }

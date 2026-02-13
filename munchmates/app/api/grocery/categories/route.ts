@@ -3,6 +3,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
@@ -66,11 +67,7 @@ export async function GET(req: NextRequest) {
             count: categories.length,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in GET /api/grocery/categories:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/grocery/categories:");
     }
 }
 
@@ -81,10 +78,7 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
 
         if (!body.name) {
-            return NextResponse.json(
-                { error: "Missing required field: name" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Missing required field: name");
         }
 
         const name = String(body.name).trim().slice(0, 100);
@@ -95,10 +89,7 @@ export async function POST(req: NextRequest) {
         });
 
         if (existing) {
-            return NextResponse.json(
-                { error: "Category already exists" },
-                { status: 409 }
-            );
+            return errorResponse(409, "Category already exists");
         }
 
         // Get max sortOrder to append at end
@@ -126,11 +117,7 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in POST /api/grocery/categories:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in POST /api/grocery/categories:");
     }
 }
 
@@ -142,7 +129,7 @@ export async function DELETE(req: NextRequest) {
         const name = searchParams.get("name");
 
         if (!name) {
-            return NextResponse.json({ error: "Missing required param: name" }, { status: 400 });
+            return errorResponse(400, "Missing required param: name");
         }
 
         // Find the category to delete
@@ -151,7 +138,7 @@ export async function DELETE(req: NextRequest) {
         });
 
         if (!categoryToDelete) {
-            return NextResponse.json({ error: "Category not found" }, { status: 404 });
+            return errorResponse(404, "Category not found");
         }
 
         // Find remaining categories (excluding the one being deleted)
@@ -180,10 +167,6 @@ export async function DELETE(req: NextRequest) {
             reassignedTo: fallbackCategory,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in DELETE /api/grocery/categories:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/grocery/categories:");
     }
 }

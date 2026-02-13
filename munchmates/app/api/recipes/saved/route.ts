@@ -6,6 +6,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
@@ -18,10 +19,7 @@ export async function POST(req: NextRequest) {
         const { recipeId, recipeName, recipeImage } = body;
 
         if (!recipeId || !recipeName) {
-            return NextResponse.json(
-                { error: "Missing required fields: recipeId and recipeName" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Missing required fields: recipeId and recipeName");
         }
 
         // Check if recipe is already saved
@@ -62,17 +60,7 @@ export async function POST(req: NextRequest) {
             { status: 201 }
         );
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-        console.error("Error saving recipe:", error);
-        return NextResponse.json(
-            { error: "Failed to save recipe" },
-            { status: 500 }
-        );
+        return handleRouteError(error, "Error saving recipe:");
     }
 }
 
@@ -98,14 +86,7 @@ export async function GET(req: NextRequest) {
             count: recipes.length,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-        console.error("Error in GET /api/recipes/saved:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/recipes/saved:");
     }
 }
 
@@ -119,10 +100,7 @@ export async function DELETE(req: NextRequest) {
         const recipeId = searchParams.get("recipeId");
 
         if (!recipeId) {
-            return NextResponse.json(
-                { error: "Missing recipeId parameter" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Missing recipeId parameter");
         }
 
         const deleted = await prisma.savedRecipe.deleteMany({
@@ -130,10 +108,7 @@ export async function DELETE(req: NextRequest) {
         });
 
         if (deleted.count === 0) {
-            return NextResponse.json(
-                { error: "Recipe not found in saved recipes" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Recipe not found in saved recipes");
         }
 
         return NextResponse.json({
@@ -141,13 +116,6 @@ export async function DELETE(req: NextRequest) {
             message: "Recipe removed from saved recipes",
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-        console.error("Error in DELETE /api/recipes/saved:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/recipes/saved:");
     }
 }
