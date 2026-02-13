@@ -33,17 +33,9 @@ Known Faults: None
  */
 
 import { Prisma } from "@prisma/client";
+import { errors as joseErrors } from "jose";
 import { NextResponse } from "next/server";
-
-export type ApiErrorCode = // Declare API error identifiers returned to the frontend
-    | "VALIDATION_ERROR"
-    | "UNAUTHORIZED"
-    | "FORBIDDEN"
-    | "NOT_FOUND"
-    | "CONFLICT"
-    | "DB_ERROR"
-    | "EXTERNAL_API_ERROR"
-    | "INTERNAL_ERROR";
+import type { ApiErrorCode } from "@/lib/types/api";
 
 export interface ApiErrorPayload { // Declare server error payload shape
     ok: false;
@@ -107,6 +99,10 @@ function toApiError(error: unknown): ApiError | null { // Try to map unknown thr
     if (error instanceof ApiError) return error;
 
     if (error instanceof Error && error.message === "no token") {
+        return new ApiError(401, "UNAUTHORIZED", "Unauthorized");
+    }
+
+    if (error instanceof joseErrors.JOSEError) { // Map JWT/JWS verification failures to 401
         return new ApiError(401, "UNAUTHORIZED", "Unauthorized");
     }
 

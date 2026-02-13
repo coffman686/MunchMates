@@ -81,6 +81,8 @@ function GroceryListContent() {
     const [editCategory, setEditCategory] = useState('');
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
+    const clearError = () => setApiError(null);
+
     const setUiError = (error: unknown, fallbackMessage: string, onRetry?: RetryAction) => {
         setApiError({
             message: getErrorMessage(error, fallbackMessage),
@@ -96,7 +98,6 @@ function GroceryListContent() {
             await assertOk(res, 'Failed to fetch grocery items');
             const data = await res.json();
             setItems(data.items || []);
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to fetch grocery items', fetchItems);
         }
@@ -110,7 +111,6 @@ function GroceryListContent() {
             const data = await res.json();
             const cats: GroceryCategory[] = data.categories || [];
             setCategories(cats.map(c => c.name));
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to fetch categories', fetchCategories);
         }
@@ -120,6 +120,7 @@ function GroceryListContent() {
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
+            clearError();
             await Promise.all([fetchItems(), fetchCategories()]);
             setIsLoading(false);
         };
@@ -149,8 +150,8 @@ function GroceryListContent() {
                         setImportedCount(data.addedCount || 0);
 
                         // Refetch items and categories
+                        clearError();
                         await Promise.all([fetchItems(), fetchCategories()]);
-                        setApiError(null);
 
                         localStorage.removeItem('pending-grocery-items');
                         window.history.replaceState({}, '', '/grocery-list');
@@ -187,6 +188,7 @@ function GroceryListContent() {
 
     // save edited item via API
     const saveEdit = async (id: number) => {
+        clearError();
         setIsSaving(true);
         try {
             const res = await authedFetch('/api/grocery', {
@@ -202,7 +204,6 @@ function GroceryListContent() {
             await assertOk(res, 'Failed to update grocery item');
             const data = await res.json();
             setItems(prev => prev.map(it => it.id === id ? data.item : it));
-            setApiError(null);
             cancelEdit();
         } catch (error) {
             setUiError(error, 'Failed to update grocery item', () => saveEdit(id));
@@ -221,6 +222,7 @@ function GroceryListContent() {
     const addItem = async () => {
         if (!newItem.trim()) return;
 
+        clearError();
         const defaultCategory = categories[0] || 'Uncategorized';
         setIsSaving(true);
         try {
@@ -244,7 +246,6 @@ function GroceryListContent() {
                 return [data.item, ...prev];
             });
             setNewItem('');
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to add grocery item', addItem);
         } finally {
@@ -256,6 +257,7 @@ function GroceryListContent() {
     const addCategory = async () => {
         if (!newCategory.trim() || categories.includes(newCategory.trim())) return;
 
+        clearError();
         try {
             const res = await authedFetch('/api/grocery/categories', {
                 method: 'POST',
@@ -266,7 +268,6 @@ function GroceryListContent() {
             const data = await res.json();
             setCategories(prev => [...prev, data.category.name]);
             setNewCategory('');
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to add category', addCategory);
         }
@@ -277,6 +278,7 @@ function GroceryListContent() {
         const item = items.find(i => i.id === id);
         if (!item) return;
 
+        clearError();
         try {
             const res = await authedFetch('/api/grocery', {
                 method: 'PUT',
@@ -289,7 +291,6 @@ function GroceryListContent() {
             await assertOk(res, 'Failed to update grocery item');
             const data = await res.json();
             setItems(prev => prev.map(it => it.id === id ? data.item : it));
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to toggle grocery item', () => toggleItem(id));
         }
@@ -297,6 +298,7 @@ function GroceryListContent() {
 
     // delete item from list via API
     const deleteItem = async (id: number) => {
+        clearError();
         try {
             const res = await authedFetch(`/api/grocery?id=${id}`, {
                 method: 'DELETE',
@@ -304,7 +306,6 @@ function GroceryListContent() {
 
             await assertOk(res, 'Failed to delete grocery item');
             setItems(prev => prev.filter(item => item.id !== id));
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to delete grocery item', () => deleteItem(id));
         }
@@ -312,6 +313,7 @@ function GroceryListContent() {
 
     // delete category and reassign its items via API
     const deleteCategory = async (category: string) => {
+        clearError();
         try {
             const res = await authedFetch(`/api/grocery/categories?name=${encodeURIComponent(category)}`, {
                 method: 'DELETE',
@@ -325,7 +327,6 @@ function GroceryListContent() {
             setItems(prev => prev.map(item =>
                 item.category === category ? { ...item, category: data.reassignedTo } : item
             ));
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to delete category', () => deleteCategory(category));
         }
@@ -333,6 +334,7 @@ function GroceryListContent() {
 
     // clear all completed items via API
     const clearCompleted = async () => {
+        clearError();
         try {
             const res = await authedFetch('/api/grocery/clear', {
                 method: 'POST',
@@ -341,7 +343,6 @@ function GroceryListContent() {
 
             await assertOk(res, 'Failed to clear completed items');
             setItems(prev => prev.filter(item => !item.completed));
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to clear completed items', clearCompleted);
         }
@@ -349,6 +350,7 @@ function GroceryListContent() {
 
     // clear all items from list via API
     const clearAll = async () => {
+        clearError();
         try {
             const res = await authedFetch('/api/grocery/clear', {
                 method: 'POST',
@@ -358,7 +360,6 @@ function GroceryListContent() {
             await assertOk(res, 'Failed to clear grocery list');
             setItems([]);
             cancelEdit();
-            setApiError(null);
         } catch (error) {
             setUiError(error, 'Failed to clear all items', clearAll);
         }
@@ -409,6 +410,7 @@ function GroceryListContent() {
                                 <ApiErrorBanner
                                     message={apiError.message}
                                     isValidation={apiError.isValidation}
+                                    onDismiss={clearError}
                                     onRetry={() => {
                                         if (apiError.onRetry) {
                                             void apiError.onRetry();

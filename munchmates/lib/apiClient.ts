@@ -30,16 +30,8 @@ Known Faults: None
 
 */
 
-export type ApiErrorCode = // Declare API error identifiers
-    | "VALIDATION_ERROR"
-    | "UNAUTHORIZED"
-    | "FORBIDDEN"
-    | "NOT_FOUND"
-    | "CONFLICT"
-    | "DB_ERROR"
-    | "EXTERNAL_API_ERROR"
-    | "INTERNAL_ERROR"
-    | "UNKNOWN_ERROR";
+import type { ApiErrorCode } from "@/lib/types/api";
+export type { ApiErrorCode };
 
 export class ApiClientError extends Error { // Typed error wrapper consumed by frontend flows
     status: number;

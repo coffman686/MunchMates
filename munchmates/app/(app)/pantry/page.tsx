@@ -72,12 +72,7 @@ interface PantryItem {
     addedAt: string;
 }
 
-type RetryActionContext =
-    | { action: 'fetchItems' }
-    | { action: 'addItem' }
-    | { action: 'saveEdit'; id: number }
-    | { action: 'removeItem'; id: number }
-    | { action: 'clearAll' };
+type RetryAction = () => void | Promise<void>;
 
 const categories = [
     'Grains & Flour',
@@ -105,7 +100,7 @@ const Pantry = () => {
     const [items, setItems] = useState<PantryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [apiError, setApiError] = useState<{ message: string; isValidation: boolean; retryAction?: RetryActionContext } | null>(null);
+    const [apiError, setApiError] = useState<{ message: string; isValidation: boolean; onRetry?: RetryAction } | null>(null);
 
     const [itemName, setItemName] = useState('');
     const [itemQuantity, setItemQuantity] = useState('');
@@ -122,11 +117,13 @@ const Pantry = () => {
 
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
-    const setUiError = (error: unknown, fallbackMessage: string, retryAction?: RetryActionContext) => {
+    const clearError = () => setApiError(null);
+
+    const setUiError = (error: unknown, fallbackMessage: string, onRetry?: RetryAction) => {
         setApiError({
             message: getErrorMessage(error, fallbackMessage),
             isValidation: isValidationError(error),
-            retryAction,
+            onRetry,
         });
     };
 
@@ -137,44 +134,17 @@ const Pantry = () => {
             await assertOk(res, 'Failed to fetch pantry items');
             const data = await res.json();
             setItems(data.items || []);
-            setApiError(null);
         } catch (error) {
-            setUiError(error, 'Failed to fetch pantry items', { action: 'fetchItems' });
+            setUiError(error, 'Failed to fetch pantry items', fetchItems);
         } finally {
             setIsLoading(false);
         }
     }, []);
 
     useEffect(() => {
+        clearError();
         fetchItems();
     }, [fetchItems]);
-
-    const retryLastAction = () => {
-        if (!apiError?.retryAction) {
-            void fetchItems();
-            return;
-        }
-
-        switch (apiError.retryAction.action) {
-            case 'fetchItems':
-                void fetchItems();
-                break;
-            case 'addItem':
-                void addItem();
-                break;
-            case 'saveEdit':
-                void saveEdit(apiError.retryAction.id);
-                break;
-            case 'removeItem':
-                void removeItem(apiError.retryAction.id);
-                break;
-            case 'clearAll':
-                void clearAll();
-                break;
-            default:
-                void fetchItems();
-        }
-    };
 
     // functions to handle editing pantry items
     const beginEdit = (item: PantryItem) => {
@@ -196,6 +166,7 @@ const Pantry = () => {
 
     // save edited item details via API
     const saveEdit = async (id: number) => {
+        clearError();
         setIsSaving(true);
         try {
             const res = await authedFetch('/api/pantry', {
@@ -214,10 +185,9 @@ const Pantry = () => {
             setItems(prev =>
                 prev.map(it => it.id === id ? data.item : it)
             );
-            setApiError(null);
             cancelEdit();
         } catch (error) {
-            setUiError(error, 'Failed to update pantry item', { action: 'saveEdit', id });
+            setUiError(error, 'Failed to update pantry item', () => saveEdit(id));
         } finally {
             setIsSaving(false);
         }
@@ -236,11 +206,11 @@ const Pantry = () => {
             setApiError({
                 message: 'Name and quantity are required',
                 isValidation: true,
-                retryAction: { action: 'addItem' },
             });
             return;
         }
 
+        clearError();
         setIsSaving(true);
         try {
             const res = await authedFetch('/api/pantry', {
@@ -269,9 +239,8 @@ const Pantry = () => {
             setItemQuantity('');
             setExpiryDate('');
             setItemCategory(categories[0]);
-            setApiError(null);
         } catch (error) {
-            setUiError(error, 'Failed to add pantry item', { action: 'addItem' });
+            setUiError(error, 'Failed to add pantry item', addItem);
         } finally {
             setIsSaving(false);
         }
@@ -279,21 +248,22 @@ const Pantry = () => {
 
     // function to remove pantry item by id via API
     const removeItem = async (id: number) => {
+        clearError();
         try {
             const res = await authedFetch(`/api/pantry?id=${id}`, {
                 method: 'DELETE',
             });
 
             await assertOk(res, 'Failed to delete pantry item');
-            setItems(items.filter(item => item.id !== id));
-            setApiError(null);
+            setItems(prev => prev.filter(item => item.id !== id));
         } catch (error) {
-            setUiError(error, 'Failed to delete pantry item', { action: 'removeItem', id });
+            setUiError(error, 'Failed to delete pantry item', () => removeItem(id));
         }
     };
 
     // function to clear all pantry items via API
     const clearAll = async () => {
+        clearError();
         // Delete items one by one (no bulk delete endpoint for pantry)
         for (const item of items) {
             try {
@@ -301,14 +271,14 @@ const Pantry = () => {
                     method: 'DELETE',
                 });
                 await assertOk(res, 'Failed to clear pantry');
+                // Remove from state incrementally so partial failures don't leave stale items
+                setItems(prev => prev.filter(i => i.id !== item.id));
             } catch (error) {
-                setUiError(error, 'Failed to clear pantry', { action: 'clearAll' });
+                setUiError(error, 'Failed to clear pantry', clearAll);
                 return;
             }
         }
-        setItems([]);
         cancelEdit();
-        setApiError(null);
     };
 
     // utility functions for expiry status
@@ -384,7 +354,14 @@ const Pantry = () => {
                                     <ApiErrorBanner
                                         message={apiError.message}
                                         isValidation={apiError.isValidation}
-                                        onRetry={retryLastAction}
+                                        onDismiss={clearError}
+                                        onRetry={() => {
+                                            if (apiError.onRetry) {
+                                                void apiError.onRetry();
+                                                return;
+                                            }
+                                            void fetchItems();
+                                        }}
                                     />
                                 ) : null}
                                 {/* render stats overview */}
