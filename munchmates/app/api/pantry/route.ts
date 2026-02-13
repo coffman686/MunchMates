@@ -3,6 +3,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
@@ -36,11 +37,7 @@ export async function GET(req: NextRequest) {
             count: items.length,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in GET /api/pantry:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/pantry:");
     }
 }
 
@@ -52,10 +49,7 @@ export async function POST(req: NextRequest) {
 
         // Validate required fields
         if (!body.name || !body.quantity || !body.category) {
-            return NextResponse.json(
-                { error: "Missing required fields: name, quantity, category" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Missing required fields: name, quantity, category");
         }
 
         // Sanitize inputs
@@ -103,11 +97,7 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in POST /api/pantry:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in POST /api/pantry:");
     }
 }
 
@@ -118,7 +108,7 @@ export async function PUT(req: NextRequest) {
         const body = await req.json();
 
         if (!body.id) {
-            return NextResponse.json({ error: "Missing required field: id" }, { status: 400 });
+            return errorResponse(400, "Missing required field: id");
         }
 
         // Verify item belongs to user
@@ -127,7 +117,7 @@ export async function PUT(req: NextRequest) {
         });
 
         if (!existing) {
-            return NextResponse.json({ error: "Item not found" }, { status: 404 });
+            return errorResponse(404, "Item not found");
         }
 
         // Build update data
@@ -169,11 +159,7 @@ export async function PUT(req: NextRequest) {
             },
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in PUT /api/pantry:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in PUT /api/pantry:");
     }
 }
 
@@ -185,12 +171,12 @@ export async function DELETE(req: NextRequest) {
         const id = searchParams.get("id");
 
         if (!id) {
-            return NextResponse.json({ error: "Missing required param: id" }, { status: 400 });
+            return errorResponse(400, "Missing required param: id");
         }
 
         const itemId = parseInt(id, 10);
         if (isNaN(itemId)) {
-            return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+            return errorResponse(400, "Invalid id");
         }
 
         // Verify item belongs to user before deleting
@@ -199,7 +185,7 @@ export async function DELETE(req: NextRequest) {
         });
 
         if (!existing) {
-            return NextResponse.json({ error: "Item not found" }, { status: 404 });
+            return errorResponse(404, "Item not found");
         }
 
         await prisma.pantryItem.delete({
@@ -208,10 +194,6 @@ export async function DELETE(req: NextRequest) {
 
         return NextResponse.json({ ok: true, message: "Item deleted" });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in DELETE /api/pantry:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/pantry:");
     }
 }

@@ -3,6 +3,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
@@ -28,10 +29,7 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
 
         if (!body.items || !Array.isArray(body.items)) {
-            return NextResponse.json(
-                { error: "Missing required field: items (array)" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Missing required field: items (array)");
         }
 
         const aggregatedItems: AggregatedIngredient[] = body.items;
@@ -133,10 +131,6 @@ export async function POST(req: NextRequest) {
             totalProcessed: aggregatedItems.length,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in POST /api/grocery/import:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in POST /api/grocery/import:");
     }
 }

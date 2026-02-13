@@ -9,6 +9,7 @@
 // - 500 otherwise
 
 import { NextRequest, NextResponse } from 'next/server';
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { getRecipeInformation } from '@/lib/spoonacular';
 
 export async function GET(request: NextRequest) {
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
     const idParam = searchParams.get('id');
 
     if (!idParam) {
-        return NextResponse.json({ error: 'Missing id parameter' }, { status: 400 });
+        return errorResponse(400, 'Missing id parameter');
     }
 
     try {
@@ -24,20 +25,13 @@ export async function GET(request: NextRequest) {
         const recipeInfo = await getRecipeInformation(id);
         return NextResponse.json(recipeInfo);
     } catch (error) {
-        console.error('Error fetching recipe information:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
         // Check for API limit exceeded
         if (errorMessage.includes('402')) {
-            return NextResponse.json(
-                { error: 'API daily limit reached. Please try again tomorrow or upgrade your Spoonacular plan.' },
-                { status: 402 }
-            );
+            return errorResponse(402, 'API daily limit reached. Please try again tomorrow or upgrade your Spoonacular plan.');
         }
 
-        return NextResponse.json(
-            { error: 'Failed to fetch recipe information', details: errorMessage },
-            { status: 500 }
-        );
+        return handleRouteError(error, `Error fetching recipe information: ${errorMessage}`);
     }
 }

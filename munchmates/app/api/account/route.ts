@@ -3,6 +3,7 @@
 // and verifying the token we are given. Also helps to show error codes if keycloak
 // acts up
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { deleteUserById } from "@/lib/keycloakAdmin";
 
@@ -13,10 +14,7 @@ export async function DELETE(req: NextRequest) {
         );
 
         if (!claims?.sub) {
-            return NextResponse.json(
-                { error: "No user id (sub) in token" },
-                { status: 400 }
-            );
+            return errorResponse(400, "No user id (sub) in token");
         }
 
         // If you want to also remove local profile data, you can move the
@@ -25,11 +23,7 @@ export async function DELETE(req: NextRequest) {
         await deleteUserById(claims.sub);
 
         return NextResponse.json({ ok: true });
-    } catch (err) {
-        console.error("Error deleting Keycloak account", err);
-        return NextResponse.json(
-            { error: "Failed to delete account" },
-            { status: 500 }
-        );
+    } catch (error) {
+        return handleRouteError(error, "Error deleting Keycloak account");
     }
 }

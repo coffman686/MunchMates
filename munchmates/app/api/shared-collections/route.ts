@@ -8,6 +8,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
@@ -29,11 +30,7 @@ export async function GET(req: NextRequest) {
             count: collections.length,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in GET /api/shared-collections:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/shared-collections:");
     }
 }
 
@@ -48,10 +45,7 @@ export async function POST(req: NextRequest) {
         const { name, description } = body;
 
         if (!name || name.trim() === '') {
-            return NextResponse.json(
-                { error: "Collection name is required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Collection name is required");
         }
 
         // Ensure User record exists
@@ -87,11 +81,7 @@ export async function POST(req: NextRequest) {
             { status: 201 }
         );
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error creating collection:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error creating collection:");
     }
 }
 
@@ -104,10 +94,7 @@ export async function DELETE(req: NextRequest) {
         const collectionId = req.nextUrl.searchParams.get("collectionId");
 
         if (!collectionId) {
-            return NextResponse.json(
-                { error: "Missing collectionId parameter" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Missing collectionId parameter");
         }
 
         const collection = await prisma.sharedCollection.findUnique({
@@ -116,18 +103,12 @@ export async function DELETE(req: NextRequest) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember || userMember.role !== 'owner') {
-            return NextResponse.json(
-                { error: "Only the owner can delete this collection" },
-                { status: 403 }
-            );
+            return errorResponse(403, "Only the owner can delete this collection");
         }
 
         // Cascade delete handles members and recipes
@@ -140,10 +121,6 @@ export async function DELETE(req: NextRequest) {
             message: "Collection deleted successfully",
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in DELETE /api/shared-collections:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/shared-collections:");
     }
 }

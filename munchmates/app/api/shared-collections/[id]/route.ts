@@ -8,6 +8,7 @@
 // Backed by Postgres via Prisma — data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
@@ -29,18 +30,12 @@ export async function GET(req: NextRequest, context: RouteContext) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         const isMember = collection.members.some(m => m.userId === userId);
         if (!isMember) {
-            return NextResponse.json(
-                { error: "You don't have access to this collection" },
-                { status: 403 }
-            );
+            return errorResponse(403, "You don't have access to this collection");
         }
 
         return NextResponse.json({
@@ -48,11 +43,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
             collection: formatCollection(collection),
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in GET /api/shared-collections/[id]:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/shared-collections/[id]:");
     }
 }
 
@@ -70,19 +61,13 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         // Check if user is a member with edit rights
         const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember || userMember.role === 'viewer') {
-            return NextResponse.json(
-                { error: "You don't have permission to edit this collection" },
-                { status: 403 }
-            );
+            return errorResponse(403, "You don't have permission to edit this collection");
         }
 
         const body = await req.json();
@@ -109,10 +94,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
             case 'addRecipe': {
                 if (!recipeId || !recipeName) {
-                    return NextResponse.json(
-                        { error: "recipeId and recipeName are required" },
-                        { status: 400 }
-                    );
+                    return errorResponse(400, "recipeId and recipeName are required");
                 }
 
                 // Check if recipe already exists in collection
@@ -148,18 +130,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
             case 'removeRecipe': {
                 if (!recipeId) {
-                    return NextResponse.json(
-                        { error: "recipeId is required" },
-                        { status: 400 }
-                    );
+                    return errorResponse(400, "recipeId is required");
                 }
 
                 const existingRecipe = collection.recipes.find(r => r.recipeId === recipeId);
                 if (!existingRecipe) {
-                    return NextResponse.json(
-                        { error: "Recipe not found in collection" },
-                        { status: 404 }
-                    );
+                    return errorResponse(404, "Recipe not found in collection");
                 }
 
                 await prisma.collectionRecipe.delete({
@@ -179,17 +155,10 @@ export async function PUT(req: NextRequest, context: RouteContext) {
             }
 
             default:
-                return NextResponse.json(
-                    { error: "Invalid action. Use 'update', 'addRecipe', or 'removeRecipe'" },
-                    { status: 400 }
-                );
+                return errorResponse(400, "Invalid action. Use 'update', 'addRecipe', or 'removeRecipe'");
         }
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error updating collection:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error updating collection:");
     }
 }
 
@@ -206,18 +175,12 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         });
 
         if (!collection) {
-            return NextResponse.json(
-                { error: "Collection not found" },
-                { status: 404 }
-            );
+            return errorResponse(404, "Collection not found");
         }
 
         const userMember = collection.members.find(m => m.userId === userId);
         if (!userMember) {
-            return NextResponse.json(
-                { error: "You are not a member of this collection" },
-                { status: 403 }
-            );
+            return errorResponse(403, "You are not a member of this collection");
         }
 
         if (userMember.role === 'owner') {
@@ -240,10 +203,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
             });
         }
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in DELETE /api/shared-collections/[id]:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/shared-collections/[id]:");
     }
 }

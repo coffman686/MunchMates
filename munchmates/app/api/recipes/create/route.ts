@@ -9,6 +9,7 @@
 // mapping the ingredients string array into the extendedIngredients format.
 
 import { NextRequest, NextResponse } from "next/server";
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
@@ -22,24 +23,15 @@ export async function POST(req: NextRequest) {
 
         // Validate required fields
         if (!title || typeof title !== 'string' || !title.trim()) {
-            return NextResponse.json(
-                { error: "Recipe title is required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Recipe title is required");
         }
 
         if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
-            return NextResponse.json(
-                { error: "At least one ingredient is required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "At least one ingredient is required");
         }
 
         if (!instructions || typeof instructions !== 'string' || !instructions.trim()) {
-            return NextResponse.json(
-                { error: "Instructions are required" },
-                { status: 400 }
-            );
+            return errorResponse(400, "Instructions are required");
         }
 
         // Ensure User record exists
@@ -87,17 +79,7 @@ export async function POST(req: NextRequest) {
             { status: 201 }
         );
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-        console.error("Error creating recipe:", error);
-        return NextResponse.json(
-            { error: "Failed to create recipe" },
-            { status: 500 }
-        );
+        return handleRouteError(error, "Error creating recipe:");
     }
 }
 
@@ -149,12 +131,12 @@ export async function GET(req: NextRequest) {
         if (singleId) {
             const id = parseInt(singleId, 10);
             if (isNaN(id)) {
-                return NextResponse.json({ error: "Invalid recipe ID" }, { status: 400 });
+                return errorResponse(400, "Invalid recipe ID");
             }
 
             const recipe = await prisma.customRecipe.findUnique({ where: { id } });
             if (!recipe) {
-                return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
+                return errorResponse(404, "Recipe not found");
             }
 
             return NextResponse.json({ ok: true, recipe: mapToRecipeInfo(recipe) });
@@ -186,14 +168,7 @@ export async function GET(req: NextRequest) {
             count: recipes.length,
         });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-        console.error("Error in GET /api/recipes/create:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in GET /api/recipes/create:");
     }
 }
 
@@ -204,22 +179,18 @@ export async function DELETE(req: NextRequest) {
 
         const id = parseInt(req.nextUrl.searchParams.get("id") || "", 10);
         if (isNaN(id)) {
-            return NextResponse.json({ error: "Invalid recipe ID" }, { status: 400 });
+            return errorResponse(400, "Invalid recipe ID");
         }
 
         const recipe = await prisma.customRecipe.findUnique({ where: { id } });
         if (!recipe || recipe.userId !== userId) {
-            return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
+            return errorResponse(404, "Recipe not found");
         }
 
         await prisma.customRecipe.delete({ where: { id } });
 
         return NextResponse.json({ ok: true, message: "Recipe deleted" });
     } catch (error) {
-        if (error instanceof Error && error.message === "no token") {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        console.error("Error in DELETE /api/recipes/create:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return handleRouteError(error, "Error in DELETE /api/recipes/create:");
     }
 }

@@ -8,6 +8,7 @@
 // - Verifies user authorization
 // - Updates user profile and responds with updated profile
 import { NextRequest, NextResponse } from "next/server";
+import { handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 
 type ProfileData = {
@@ -33,8 +34,8 @@ export async function GET(req: NextRequest) {
 
         // Return profile
         return NextResponse.json(existing);
-    } catch (e) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    } catch (error) {
+        return handleRouteError(error, "Error in GET /api/me");
     }
 }
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
 
         // Return updated profile
         return NextResponse.json({ ok: true, profile: update });
-    } catch (e) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    } catch (error) {
+        return handleRouteError(error, "Error in POST /api/me");
     }
 }

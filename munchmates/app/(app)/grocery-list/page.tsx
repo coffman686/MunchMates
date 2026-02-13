@@ -29,6 +29,8 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/layout/app-sidebar';
 import ImageClassificationDialog from '@/components/image-classification-dialog';
 import { authedFetch } from '@/lib/authedFetch';
+import ApiErrorBanner from '@/components/ui/api-error-banner';
+import { assertOk, getErrorMessage, isValidationError } from '@/lib/apiClient';
 import {
     Select,
     SelectTrigger,
@@ -55,6 +57,8 @@ interface GroceryCategory {
     sortOrder: number;
 }
 
+type RetryAction = () => void | Promise<void>;
+
 // main grocery list component
 // includes adding, editing, deleting, categorizing, and filtering items
 // also handles importing items from meal planner
@@ -69,6 +73,7 @@ function GroceryListContent() {
     const [importedCount, setImportedCount] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [apiError, setApiError] = useState<{ message: string; isValidation: boolean; onRetry?: RetryAction } | null>(null);
 
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editName, setEditName] = useState('');
@@ -76,16 +81,24 @@ function GroceryListContent() {
     const [editCategory, setEditCategory] = useState('');
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
+    const setUiError = (error: unknown, fallbackMessage: string, onRetry?: RetryAction) => {
+        setApiError({
+            message: getErrorMessage(error, fallbackMessage),
+            isValidation: isValidationError(error),
+            onRetry,
+        });
+    };
+
     // Fetch grocery items from API
     const fetchItems = useCallback(async () => {
         try {
             const res = await authedFetch('/api/grocery');
-            if (res.ok) {
-                const data = await res.json();
-                setItems(data.items || []);
-            }
+            await assertOk(res, 'Failed to fetch grocery items');
+            const data = await res.json();
+            setItems(data.items || []);
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to fetch grocery items:', error);
+            setUiError(error, 'Failed to fetch grocery items', fetchItems);
         }
     }, []);
 
@@ -93,13 +106,13 @@ function GroceryListContent() {
     const fetchCategories = useCallback(async () => {
         try {
             const res = await authedFetch('/api/grocery/categories');
-            if (res.ok) {
-                const data = await res.json();
-                const cats: GroceryCategory[] = data.categories || [];
-                setCategories(cats.map(c => c.name));
-            }
+            await assertOk(res, 'Failed to fetch categories');
+            const data = await res.json();
+            const cats: GroceryCategory[] = data.categories || [];
+            setCategories(cats.map(c => c.name));
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to fetch categories:', error);
+            setUiError(error, 'Failed to fetch categories', fetchCategories);
         }
     }, []);
 
@@ -131,13 +144,13 @@ function GroceryListContent() {
                             body: JSON.stringify({ items: aggregatedItems }),
                         });
 
-                        if (res.ok) {
-                            const data = await res.json();
-                            setImportedCount(data.addedCount || 0);
+                        await assertOk(res, 'Failed to import grocery items');
+                        const data = await res.json();
+                        setImportedCount(data.addedCount || 0);
 
-                            // Refetch items and categories
-                            await Promise.all([fetchItems(), fetchCategories()]);
-                        }
+                        // Refetch items and categories
+                        await Promise.all([fetchItems(), fetchCategories()]);
+                        setApiError(null);
 
                         localStorage.removeItem('pending-grocery-items');
                         window.history.replaceState({}, '', '/grocery-list');
@@ -147,7 +160,9 @@ function GroceryListContent() {
                             setImportedCount(0);
                         }, 5000);
                     } catch (error) {
-                        console.error('Failed to import grocery items:', error);
+                        setUiError(error, 'Failed to import grocery items', () => {
+                            void Promise.all([fetchItems(), fetchCategories()]);
+                        });
                     }
                 })();
             }
@@ -184,15 +199,15 @@ function GroceryListContent() {
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setItems(prev => prev.map(it => it.id === id ? data.item : it));
-            }
+            await assertOk(res, 'Failed to update grocery item');
+            const data = await res.json();
+            setItems(prev => prev.map(it => it.id === id ? data.item : it));
+            setApiError(null);
+            cancelEdit();
         } catch (error) {
-            console.error('Failed to update grocery item:', error);
+            setUiError(error, 'Failed to update grocery item', () => saveEdit(id));
         } finally {
             setIsSaving(false);
-            cancelEdit();
         }
     };
 
@@ -217,21 +232,21 @@ function GroceryListContent() {
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setItems(prev => {
-                    const existingIndex = prev.findIndex(i => i.id === data.item.id);
-                    if (existingIndex >= 0) {
-                        const updated = [...prev];
-                        updated[existingIndex] = data.item;
-                        return updated;
-                    }
-                    return [data.item, ...prev];
-                });
-                setNewItem('');
-            }
+            await assertOk(res, 'Failed to add grocery item');
+            const data = await res.json();
+            setItems(prev => {
+                const existingIndex = prev.findIndex(i => i.id === data.item.id);
+                if (existingIndex >= 0) {
+                    const updated = [...prev];
+                    updated[existingIndex] = data.item;
+                    return updated;
+                }
+                return [data.item, ...prev];
+            });
+            setNewItem('');
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to add grocery item:', error);
+            setUiError(error, 'Failed to add grocery item', addItem);
         } finally {
             setIsSaving(false);
         }
@@ -247,13 +262,13 @@ function GroceryListContent() {
                 body: JSON.stringify({ name: newCategory.trim() }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setCategories(prev => [...prev, data.category.name]);
-                setNewCategory('');
-            }
+            await assertOk(res, 'Failed to add category');
+            const data = await res.json();
+            setCategories(prev => [...prev, data.category.name]);
+            setNewCategory('');
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to add category:', error);
+            setUiError(error, 'Failed to add category', addCategory);
         }
     };
 
@@ -271,12 +286,12 @@ function GroceryListContent() {
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setItems(prev => prev.map(it => it.id === id ? data.item : it));
-            }
+            await assertOk(res, 'Failed to update grocery item');
+            const data = await res.json();
+            setItems(prev => prev.map(it => it.id === id ? data.item : it));
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to toggle grocery item:', error);
+            setUiError(error, 'Failed to toggle grocery item', () => toggleItem(id));
         }
     };
 
@@ -287,11 +302,11 @@ function GroceryListContent() {
                 method: 'DELETE',
             });
 
-            if (res.ok) {
-                setItems(prev => prev.filter(item => item.id !== id));
-            }
+            await assertOk(res, 'Failed to delete grocery item');
+            setItems(prev => prev.filter(item => item.id !== id));
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to delete grocery item:', error);
+            setUiError(error, 'Failed to delete grocery item', () => deleteItem(id));
         }
     };
 
@@ -302,17 +317,17 @@ function GroceryListContent() {
                 method: 'DELETE',
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                // Update categories list
-                setCategories(prev => prev.filter(c => c !== category));
-                // Update items with reassigned category
-                setItems(prev => prev.map(item =>
-                    item.category === category ? { ...item, category: data.reassignedTo } : item
-                ));
-            }
+            await assertOk(res, 'Failed to delete category');
+            const data = await res.json();
+            // Update categories list
+            setCategories(prev => prev.filter(c => c !== category));
+            // Update items with reassigned category
+            setItems(prev => prev.map(item =>
+                item.category === category ? { ...item, category: data.reassignedTo } : item
+            ));
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to delete category:', error);
+            setUiError(error, 'Failed to delete category', () => deleteCategory(category));
         }
     };
 
@@ -324,11 +339,11 @@ function GroceryListContent() {
                 body: JSON.stringify({ action: 'completed' }),
             });
 
-            if (res.ok) {
-                setItems(prev => prev.filter(item => !item.completed));
-            }
+            await assertOk(res, 'Failed to clear completed items');
+            setItems(prev => prev.filter(item => !item.completed));
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to clear completed items:', error);
+            setUiError(error, 'Failed to clear completed items', clearCompleted);
         }
     };
 
@@ -340,12 +355,12 @@ function GroceryListContent() {
                 body: JSON.stringify({ action: 'all' }),
             });
 
-            if (res.ok) {
-                setItems([]);
-                cancelEdit();
-            }
+            await assertOk(res, 'Failed to clear grocery list');
+            setItems([]);
+            cancelEdit();
+            setApiError(null);
         } catch (error) {
-            console.error('Failed to clear all items:', error);
+            setUiError(error, 'Failed to clear all items', clearAll);
         }
     };
 
@@ -390,6 +405,19 @@ function GroceryListContent() {
                             </div>
                         ) : (
                         <div className="max-w-6xl mx-auto space-y-6">
+                            {apiError ? (
+                                <ApiErrorBanner
+                                    message={apiError.message}
+                                    isValidation={apiError.isValidation}
+                                    onRetry={() => {
+                                        if (apiError.onRetry) {
+                                            void apiError.onRetry();
+                                            return;
+                                        }
+                                        void Promise.all([fetchItems(), fetchCategories()]);
+                                    }}
+                                />
+                            ) : null}
                             {/* import notification */}
                             {importedCount > 0 && (
                                 <Card className="bg-green-50 border-green-200">

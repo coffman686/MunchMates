@@ -8,6 +8,7 @@
 // - intolerances: the user's intolerances and allergens
 
 import { NextRequest, NextResponse } from 'next/server';
+import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { searchRecipes } from '@/lib/spoonacular';
 
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     const diet = searchParams.get("diet") ?? undefined;
     const intolerances = searchParams.get("intolerances") ?? undefined;
     if (!ingredients) {
-        return NextResponse.json({ error: 'Missing ingredients parameter' }, { status: 400 });
+        return errorResponse(400, 'Missing ingredients parameter');
     }
     try {
         const recipes = await searchRecipes('', {
@@ -42,6 +43,6 @@ export async function GET(request: NextRequest) {
         }))
         return NextResponse.json({ results });
     } catch (error) {
-        return NextResponse.json({ error: 'Failed to fetch recipes' }, { status: 500 });
+        return handleRouteError(error, 'Failed to fetch recipes by ingredient');
     }
 }
