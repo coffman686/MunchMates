@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { normalize } from "@/lib/normalize";
 
 // GET /api/pantry — List all pantry items for user
 export async function GET(req: NextRequest) {
@@ -29,6 +30,8 @@ export async function GET(req: NextRequest) {
             items: items.map((item) => ({
                 id: item.id,
                 name: item.name,
+                // Create normalization for empty entries for migration
+                canonName: item.canonName || normalize(item.name),
                 quantity: item.quantity,
                 category: item.category,
                 expiryDate: item.expiryDate?.toISOString().split("T")[0] ?? null,
