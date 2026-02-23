@@ -7,7 +7,7 @@
 <br/>
 **Current live reference stories: [Reference Stories](https://docs.google.com/spreadsheets/d/1gixfukI3HKdBF7ydcMlqZPqSt_f5zdoYoIKE4cyNiXg/edit?usp=sharing)**
 <br />
-**Current live capstone script: [Captone Script](https://docs.google.com/document/d/1i2cio2h-fqG7gQWwD1nb_JBMak__AypLeUuCeE-08y0/edit?usp=sharing)**
+**Current live capstone script: [Capstone Script](https://docs.google.com/document/d/1i2cio2h-fqG7gQWwD1nb_JBMak__AypLeUuCeE-08y0/edit?usp=sharing)**
 
 ---
 
