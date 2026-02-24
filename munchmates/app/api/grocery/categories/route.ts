@@ -1,3 +1,25 @@
+// Pantry intersection query mode
+// Returns recipes sorted by number of ingredients in user's pantry
+export async function pantryIntersectionRecipes(userId: string) {
+    const pantryItems = await prisma.pantryItem.findMany({
+        where: { userId },
+        select: { name: true },
+    });
+    const recipes = await prisma.recipe.findMany({
+        include: { ingredients: true },
+    });
+    // For each recipe, count intersection
+    return recipes
+        .map(recipe => {
+            const intersectionCount = recipe.ingredients.filter(ingredient =>
+                pantryItems.some(pantryItem =>
+                    pantryItem.name.toLowerCase() === ingredient.name.toLowerCase()
+                )
+            ).length;
+            return { ...recipe, intersectionCount };
+        })
+        .sort((a, b) => b.intersectionCount - a.intersectionCount);
+}
 // app/api/grocery/categories/route.ts
 // Endpoint to manage user's custom grocery categories
 // Backed by Postgres via Prisma — data persists across server restarts
@@ -6,6 +28,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+
+// Pantry-only recipe filter logic
+// Returns recipes where all ingredients are in user's pantry
+export async function filterPantryOnlyRecipes(userId: string) {
+    // Fetch pantry items for user
+    const pantryItems = await prisma.pantryItem.findMany({
+        where: { userId },
+        select: { name: true },
+    });
+    // Fetch all recipes (example: adjust as needed for your schema)
+    const recipes = await prisma.recipe.findMany({
+        include: { ingredients: true },
+    });
+    // Filter recipes where every ingredient is in pantry
+    return recipes.filter(recipe =>
+        recipe.ingredients.every(ingredient =>
+            pantryItems.some(pantryItem =>
+                pantryItem.name.toLowerCase() === ingredient.name.toLowerCase()
+            )
+        )
+    );
+}
 
 // Default categories seeded on first GET if user has none
 const DEFAULT_CATEGORIES = [
@@ -29,7 +73,19 @@ export async function GET(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
-        // Ensure User record exists
+        // Query mode: pantry-intersection
+        const url = new URL(req.url);
+        const mode = url.searchParams.get("mode");
+        if (mode === "pantry-intersection") {
+            const recipes = await pantryIntersectionRecipes(p.sub);
+            return NextResponse.json({
+                ok: true,
+                recipes,
+                count: recipes.length,
+            });
+        }
+
+        // ...existing code for categories...
         await prisma.user.upsert({
             where: { id: p.sub },
             update: {},
