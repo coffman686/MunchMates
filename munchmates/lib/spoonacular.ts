@@ -2,8 +2,41 @@
 // Provides typed wrappers around Spoonacular endpoints for
 // recipes, ingredients, nutrition, meal planning, and image URL
 // helpers, along with a shared fetch handler that injects the API key.
-
+import { getOrSetJsonSWR, stableKey } from './cache';
 const SPOONACULAR_API_BASE_URL = 'https://api.spoonacular.com';
+
+function ttlFor(endpoint: string): number | null {
+  // return null = do not cache
+  if (endpoint.startsWith('/recipes/complexSearch')) return 60 * 30; //30 min
+  if (endpoint.startsWith('/recipes/findByIngredients')) return 60 * 30; //30 min (typical recipe search can fallback here)
+  if (endpoint.includes('/information')) return 60 * 60 * 24 * 7;    //7 days
+  if (endpoint.includes('/nutritionWidget.json')) return 60 * 60 * 24 * 7; //7 days
+  if (endpoint.startsWith('/food/ingredients/search')) return 60 * 60 * 24 * 30; //30 days
+  if (endpoint.includes('/food/ingredients/') && endpoint.includes('/information')) return 60 * 60 * 24 * 30; //30 days
+  if (endpoint.includes('/similar')) return 60 * 60 * 24; //1 day
+  if (endpoint.includes('/analyzedInstructions')) return 60 * 60 * 24 * 7; //7 days
+  if (endpoint.startsWith('/mealplanner/generate')) return 60 * 10; //10 min (if you cache)
+  if (endpoint.startsWith('/recipes/random')) return null; //random should be random
+  return 60 * 60; //fallback 1 hour
+}
+
+function swrWindowsFor(endpoint: string): { freshFor: number; staleFor: number } | null {
+  const ttl = ttlFor(endpoint);
+  if (ttl === null) return null;
+
+  //Short TTLs: allow 2x stale window (smooths out expiry cliffs)
+  if (ttl <= 60 * 60) {
+    return { freshFor: ttl, staleFor: ttl * 2 };
+  }
+
+  //Medium TTLs (e.g., 1 day): allow +1 day stale
+  if (ttl <= 60 * 60 * 24) {
+    return { freshFor: ttl, staleFor: ttl + 60 * 60 * 24 };
+  }
+
+  //Long TTLs (7d, 30d): allow +1 day stale (cap staleness)
+  return { freshFor: ttl, staleFor: ttl + 60 * 60 * 24 };
+}
 
 function getApiKey(): string {
   const apiKey = process.env.SPOONACULAR_API_KEY;
@@ -19,31 +52,42 @@ async function spoonacularFetch<T>(
   params: Record<string, string | number | boolean> = {}
 ): Promise<T> {
   const apiKey = getApiKey();
+  const ttl = ttlFor(endpoint);
+  const fetcher = async (): Promise<T> => {
+    const urlParams = new URLSearchParams({
+      ...params,
+      apiKey,
+    } as Record<string, string>);
 
-  // add API key to params
-  const urlParams = new URLSearchParams({
-    ...params,
-    apiKey,
-  } as Record<string, string>);
+    const url = `${SPOONACULAR_API_BASE_URL}${endpoint}?${urlParams.toString()}`;
 
-  const url = `${SPOONACULAR_API_BASE_URL}${endpoint}?${urlParams.toString()}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+          `Spoonacular API error (${response.status}): ${errorText}`
+      );
+    }
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Spoonacular API error (${response.status}): ${errorText}`
-    );
+    return response.json();
+  };
+  if (ttl === null) {
+    return fetcher();
   }
 
-  return response.json();
+  const swr = swrWindowsFor(endpoint); //Check to see the fresh and stale vals
+  if (!swr) return fetcher();
+
+  const cacheKey = stableKey('spoonacular', endpoint, params);
+  return getOrSetJsonSWR<T>(cacheKey, swr.freshFor, swr.staleFor, fetcher);
 }
+
 
 // type definitions //
 
