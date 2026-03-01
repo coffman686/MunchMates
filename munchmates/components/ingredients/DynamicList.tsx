@@ -30,6 +30,7 @@ interface GroceryItem {
 interface PantryItem {
   id: number;
   name: string;
+  canonName: string;
   quantity: string;
   category: string;
   expiryDate?: string | null;
@@ -467,7 +468,7 @@ export default function IngredientList({
   // Get pantry items that aren't already in the ingredients list
   const availablePantryItems = pantryItems
     .filter(item => !ingredients.includes(item.name))
-    .map(item => item.name);
+    .map(item => item.canonName);
 
   // TODO: replace, needed for testing
   const addIngredient = (item: string) => {
