@@ -160,7 +160,7 @@ const Recipes = () => {
         }
 
         setIsLoading(true);
-        
+
         // build query parameters for API request
         const params = new URLSearchParams();
         params.set('ingredients', searchTerm);
@@ -385,7 +385,7 @@ const Recipes = () => {
                 return;
             }
             const data = await response.json();
-            const pantryItems: string[] = (data.items || []).map((item: any) => item.name);
+            const pantryItems: string[] = (data.items || []).map((item: any) => item.canonName);
             if (pantryItems.length === 0) {
                 alert('Your pantry is empty. Add items to your pantry first!');
                 return;
