@@ -508,7 +508,7 @@ export default function IngredientList({
     setIngredients([]);
   }
   return (
-      <div className="flex-1 max-w-2xl">
+      <div className="flex-1 max-w-3xl">
         <ul>
           {ingredients.map((ingredient, index) => (
               <li key={ingredient}>

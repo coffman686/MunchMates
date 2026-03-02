@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
             diet: diet,
             intolerances: intolerances,
             number: 48, //idk what to set this to yet
+            sort: 'max-used-ingredients',
+            fillIngredients: true,
         });
         const results = recipes.results.map((recipe) => ({
             id: recipe.id,
@@ -40,6 +42,8 @@ export async function GET(request: NextRequest) {
             readyInMinutes: recipe.readyInMinutes,
             cuisines: recipe.cuisines,
             dishTypes: recipe.dishTypes,
+            usedIngredients: (recipe.usedIngredients || []).map((i: any) => i.name),
+            missedIngredientCount: (recipe.missedIngredients || []).length,
         }))
         return NextResponse.json({ results });
     } catch (error) {

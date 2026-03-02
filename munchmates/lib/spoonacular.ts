@@ -99,6 +99,8 @@ export interface Recipe {
   spoonacularScore?: number;
   cuisines?: string[];
   dishTypes?: string[];
+  usedIngredients?: { id: number; name: string; amount: number; unit: string; image: string }[];
+  missedIngredients?: { id: number; name: string; amount: number; unit: string; image: string }[];
 }
 
 export interface RecipeInformation extends Recipe {
@@ -198,6 +200,8 @@ export async function searchRecipes(
     addRecipeInformation?: boolean;
     type?: string;
     includeIngredients?: string; // Comma-separated list of ingredients to include
+    sort?: string;
+    fillIngredients?: boolean;
   } = {}
 ): Promise<SearchRecipesResult> {
   return spoonacularFetch<SearchRecipesResult>('/recipes/complexSearch', {
