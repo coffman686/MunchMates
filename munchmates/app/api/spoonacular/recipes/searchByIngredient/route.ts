@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
             readyInMinutes: recipe.readyInMinutes,
             cuisines: recipe.cuisines,
             dishTypes: recipe.dishTypes,
-            usedIngredients: recipe.usedIngredients,
+            usedIngredients: (recipe.usedIngredients || []).map((i: any) => i.name),
+            missedIngredientCount: (recipe.missedIngredients || []).length,
         }))
         return NextResponse.json({ results });
     } catch (error) {

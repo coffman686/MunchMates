@@ -59,7 +59,8 @@ export interface Recipe {
   spoonacularScore?: number;
   cuisines?: string[];
   dishTypes?: string[];
-  usedIngredients?: string[];
+  usedIngredients?: { id: number; name: string; amount: number; unit: string; image: string }[];
+  missedIngredients?: { id: number; name: string; amount: number; unit: string; image: string }[];
 }
 
 export interface RecipeInformation extends Recipe {

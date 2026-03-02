@@ -119,7 +119,8 @@ type Recipe = {
     readyInMinutes: number;
     cuisines: string[];
     dishTypes: string[];
-    usedIngredients: string[];
+    usedIngredients?: string[];
+    missedIngredientCount?: number;
 }
 
 // define type for new recipe form
@@ -144,6 +145,7 @@ const Recipes = () => {
     const [selectedCuisine, setSelectedCuisine] = useState('All');
     const [diet, setDiet] = useState("");
     const [intolerances, setIntolerances] = useState("");
+    const [pantryOnly, setPantryOnly] = useState(false);
 
     const dishTypes = ['All', 'main course', 'side dish', 'dessert', 'appetizer', 'salad', 'bread', 'breakfast', 'soup', 'beverage', 'sauce', 'marinade', 'fingerfood', 'snack', 'drink'];
 
@@ -194,8 +196,8 @@ const Recipes = () => {
 
 
     // handle search button click
-    const handleSearch = async (ingredientList: string[]) => {
-        const ingredientListString = ingredientList.join(',').toLowerCase();
+    const handleSearch = async (ingredients: string[]) => {
+        const ingredientListString = ingredients.join(',').toLowerCase();
         setDiet(getDiets());
         setIntolerances(getIntolerances());
         setSearchTerm(ingredientListString);
@@ -372,20 +374,30 @@ const Recipes = () => {
             console.error('Error removing saved recipe:', error);
         }
     };
+    const [isLoadingPantry, setIsLoadingPantry] = useState(false);
+
     const handleWhatCanIMake = async () => {
+        setIsLoadingPantry(true);
         try {
             const response = await authedFetch('/api/pantry');
-            if (response.ok) {
-                const data = await response.json();
-                const pantryItems: string[] = data.items.map((item: any) => item.name);
-                const updatedIngredientList = Array.from(new Set([...ingredientList, ...pantryItems]));
-                setIngredientList(updatedIngredientList);
-                handleSearch(updatedIngredientList);
-            } else {
-                console.error('Failed to fetch pantry items');
+            if (!response.ok) {
+                alert('Failed to fetch pantry items. Please try again.');
+                return;
             }
+            const data = await response.json();
+            const pantryItems: string[] = (data.items || []).map((item: any) => item.name);
+            if (pantryItems.length === 0) {
+                alert('Your pantry is empty. Add items to your pantry first!');
+                return;
+            }
+            const updatedIngredientList = Array.from(new Set([...ingredientList, ...pantryItems]));
+            setIngredientList(updatedIngredientList);
+            handleSearch(updatedIngredientList);
         } catch (error) {
             console.error('Error fetching pantry items:', error);
+            alert('Something went wrong. Please try again.');
+        } finally {
+            setIsLoadingPantry(false);
         }
     }
     // main render for Recipes component
@@ -425,8 +437,9 @@ const Recipes = () => {
                                         type="button"
                                         onClick={handleWhatCanIMake}
                                         className="inline-flex items-center gap-2"
+                                        disabled={isLoadingPantry}
                                     >
-                                        What Can I Make?
+                                        {isLoadingPantry ? 'Loading Pantry...' : 'What Can I Make?'}
                                     </Button>
                                     <Button
                                         type="button"
@@ -488,11 +501,21 @@ const Recipes = () => {
                                         </SelectContent>
                                     </Select>
 
+                                    <Button
+                                        type="button"
+                                        variant={pantryOnly ? "default" : "outline"}
+                                        onClick={() => setPantryOnly(!pantryOnly)}
+                                        className="inline-flex items-center gap-2"
+                                    >
+                                        <Filter className="h-4 w-4" />
+                                        Pantry Only
+                                    </Button>
+
                                 </div>
                                 {/* Spoonacular Search Results Grid */}
                                 {recipes && recipes.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                        {recipes.map(recipe => (
+                                        {recipes.filter(recipe => !pantryOnly || (recipe.missedIngredientCount ?? 0) === 0).map(recipe => (
                                             <Card key={recipe.id} className="flex flex-col overflow-hidden hover:shadow-lg transition-shadow duration-300">
                                                 <div className="h-48 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
                                                     <img
@@ -543,7 +566,7 @@ const Recipes = () => {
                                                     </div>
                                                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                                                         <div className="flex items-center gap-1">
-                                                            <span>{recipe.usedIngredients.length} matching ingredient(s)</span>
+                                                            <span>{(recipe.usedIngredients ?? []).length} matching ingredient(s)</span>
                                                         </div>
                                                     </div>
                                                 </CardContent>
