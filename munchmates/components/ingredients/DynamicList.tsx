@@ -509,9 +509,9 @@ export default function IngredientList({
   }
   return (
       <div className="flex-1 max-w-3xl">
-        <ul>
+        <ul className="flex flex-wrap">
           {ingredients.map((ingredient, index) => (
-              <li key={ingredient}>
+              <li key={ingredient} className="p-0.5">
                 <Badge
                     className="justify-between"
                 >
