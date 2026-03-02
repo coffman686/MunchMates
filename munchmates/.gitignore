@@ -10,8 +10,10 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# testing (local only — not for public branch yet)
 /coverage
+/tests
+vitest.config.ts
 
 # next.js
 /.next/

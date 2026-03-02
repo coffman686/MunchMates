@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createBrotliDecompress } from "node:zlib";
 import nlp from "compromise"
@@ -8,10 +9,10 @@ type NLPProcessedItem = string;
 type CanonicalName = string;
 
 // load ingredients aliases
-const aliasData = await loadJsonBr("./data/aliases.json.br")
+const aliasData = await loadJsonBr(path.join(process.cwd(), "data/aliases.json.br"))
 
 // load additional food centric words
-const wordData = await loadJsonBr("./data/words.json.br")
+const wordData = await loadJsonBr(path.join(process.cwd(), "data/words.json.br"))
 
 // add to NLP for slighly better processing
 nlp.addWords(wordData);
@@ -38,7 +39,7 @@ async function loadJsonBr(file: string) {
 export function smashed_case(item: NFKDSanitizedItem): NFKDSanitizedItem {
   // Remove all remaining whitespace
   const whitespace = /\s/g;
-  return item.toLocaleLowerCase().toLocaleLowerCase().replaceAll(whitespace, "");
+  return item.toLocaleLowerCase().replaceAll(whitespace, "");
 }
 
 
@@ -46,7 +47,7 @@ export function sanitize(item: string): NFKDSanitizedItem {
   return item.normalize("NFKD").trim();
 }
 
-export function process(item: string): NLPProcessedItem {
+export function nlpProcess(item: string): NLPProcessedItem {
   // processing performs as much NLP-based normalization as possible
   // depluralization, deconstructing adjectives and verbs, etc
   const processed = nlp(item).normalize("heavy").text();
@@ -67,7 +68,7 @@ export function process(item: string): NLPProcessedItem {
 
 export function canonical(item: NLPProcessedItem): CanonicalName {
   // Resolves issues with characters mapping to an intermediary that were missed during the NFKC processing
-  const lowercase: string = item.toLocaleLowerCase().toLocaleLowerCase();
+  const lowercase: string = item.toLocaleLowerCase();
 
   // Convert all remaining consecutive whitespace characters into single spaces
   const whitespace = /\s+/g;
@@ -79,7 +80,7 @@ export function canonical(item: NLPProcessedItem): CanonicalName {
 export function normalize(raw: string): CanonicalName {
   // run normalization flow
   const sanitized = sanitize(raw);
-  const searched = process(sanitized);
+  const searched = nlpProcess(sanitized);
   const canonicalized = canonical(searched);
 
   return canonicalized;

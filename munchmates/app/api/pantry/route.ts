@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
         });
 
         // Create or update item (upsert on name to prevent duplicates)
+        const canonName = normalize(name);
         const item = await prisma.pantryItem.upsert({
             where: {
                 userId_name: { userId: p.sub, name },
@@ -77,10 +78,12 @@ export async function POST(req: NextRequest) {
                 quantity,
                 category,
                 expiryDate,
+                canonName,
             },
             create: {
                 userId: p.sub,
                 name,
+                canonName,
                 quantity,
                 category,
                 expiryDate,
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
             item: {
                 id: item.id,
                 name: item.name,
+                canonName: item.canonName,
                 quantity: item.quantity,
                 category: item.category,
                 expiryDate: item.expiryDate?.toISOString().split("T")[0] ?? null,
@@ -126,6 +130,7 @@ export async function PUT(req: NextRequest) {
         // Build update data
         const updateData: {
             name?: string;
+            canonName?: string;
             quantity?: string;
             category?: string;
             expiryDate?: Date | null;
@@ -133,6 +138,7 @@ export async function PUT(req: NextRequest) {
 
         if (body.name !== undefined) {
             updateData.name = String(body.name).trim().slice(0, 200);
+            updateData.canonName = normalize(updateData.name);
         }
         if (body.quantity !== undefined) {
             updateData.quantity = String(body.quantity).trim().slice(0, 100);
@@ -155,6 +161,7 @@ export async function PUT(req: NextRequest) {
             item: {
                 id: item.id,
                 name: item.name,
+                canonName: item.canonName,
                 quantity: item.quantity,
                 category: item.category,
                 expiryDate: item.expiryDate?.toISOString().split("T")[0] ?? null,
