@@ -119,6 +119,7 @@ type Recipe = {
     readyInMinutes: number;
     cuisines: string[];
     dishTypes: string[];
+    usedIngredients: string[];
 }
 
 // define type for new recipe form
@@ -538,6 +539,11 @@ const Recipes = () => {
                                                         <div className="flex items-center gap-1">
                                                             <Users className="h-4 w-4" />
                                                             <span>{recipe.servings} servings</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                                        <div className="flex items-center gap-1">
+                                                            <span>{recipe.usedIngredients.length} matching ingredient(s)</span>
                                                         </div>
                                                     </div>
                                                 </CardContent>
