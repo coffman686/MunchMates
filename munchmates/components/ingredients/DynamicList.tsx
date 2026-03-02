@@ -467,8 +467,8 @@ export default function IngredientList({
 
   // Get pantry items that aren't already in the ingredients list
   const availablePantryItems = pantryItems
-    .filter(item => !ingredients.includes(item.canonName))
-    .map(item => item.canonName);
+    .filter((item) => !ingredients.includes(item.canonName))
+    .map((item) => ({ name: item.name, canonName: item.canonName }));
 
   // TODO: replace, needed for testing
   const addIngredient = (item: string) => {
@@ -550,8 +550,8 @@ export default function IngredientList({
                 </SelectTrigger>
                 <SelectContent>
                   {availablePantryItems.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
+                    <SelectItem key={item.name} value={item.canonName}>
+                      {item.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
