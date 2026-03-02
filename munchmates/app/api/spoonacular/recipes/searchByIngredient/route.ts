@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
             diet: diet,
             intolerances: intolerances,
             number: 48, //idk what to set this to yet
+            sort: 'max-used-ingredients',
         });
         const results = recipes.results.map((recipe) => ({
             id: recipe.id,

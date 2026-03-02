@@ -158,6 +158,7 @@ export async function searchRecipes(
     addRecipeInformation?: boolean;
     type?: string;
     includeIngredients?: string; // Comma-separated list of ingredients to include
+    sort?: string;
   } = {}
 ): Promise<SearchRecipesResult> {
   return spoonacularFetch<SearchRecipesResult>('/recipes/complexSearch', {
