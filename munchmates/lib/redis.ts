@@ -15,13 +15,11 @@ export const redis =
         url: REDIS_URL,
         socket: {
             connectTimeout: 800,
-            reconnectStrategy: (retries) => Math.min(retries * 50, 1000), // backoff up to 1s
+            reconnectStrategy: (retries: number) => Math.min(retries * 50, 1000), // backoff up to 1s
         },
     });
 
-if (process.env.NODE_ENV !== "production") {
-    global.__redisClient = redis;
-}
+global.__redisClient = redis;
 
 global.__redisReady ??= false;
 
@@ -34,7 +32,7 @@ redis.on("end", () => {
 });
 
 let lastRedisErrorLogAt = 0;
-redis.on("error", (err) => {
+redis.on("error", (err: Error) => {
     global.__redisReady = false;
     const now = Date.now();
     //log at most once every 5 seconds
@@ -64,9 +62,10 @@ export async function ensureRedisConnected(): Promise<void> {
             .then(() => {
                 global.__redisReady = true;
             })
-            .catch(() => {
+            .catch((err: Error) => {
                 global.__redisReady = false;
                 nextConnectAttemptAt = Date.now() + 5000; //wait 5s before next attempt
+                console.warn("Redis connect failed:", err?.message ?? err);
             })
             .finally(() => {
                 global.__redisConnecting = undefined;
@@ -86,9 +85,11 @@ export async function ensureRedisConnected(): Promise<void> {
     }
 
     try {
-        await withTimeout(global.__redisConnecting, 900);
-    } catch {
-        //redis is optional
+        if (global.__redisConnecting) {
+            await withTimeout(global.__redisConnecting, 900);
+        }
+    } catch (err) {
         global.__redisReady = false;
+        console.warn("Redis connection attempt failed (non-blocking):", (err as Error)?.message ?? err);
     }
 }

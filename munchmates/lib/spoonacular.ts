@@ -8,14 +8,14 @@ const SPOONACULAR_API_BASE_URL = 'https://api.spoonacular.com';
 function ttlFor(endpoint: string): number | null {
   // return null = do not cache
   if (endpoint.startsWith('/recipes/complexSearch')) return 60 * 30; //30 min
-  if (endpoint.startsWith('/recipes/findByIngredients')) return 60 * 30; //30 min (typical recipe search can fallback here)
-  if (endpoint.includes('/information')) return 60 * 60 * 24 * 7;    //7 days
-  if (endpoint.includes('/nutritionWidget.json')) return 60 * 60 * 24 * 7; //7 days
+  if (endpoint.startsWith('/recipes/findByIngredients')) return 60 * 30; //30 min
   if (endpoint.startsWith('/food/ingredients/search')) return 60 * 60 * 24 * 30; //30 days
   if (endpoint.includes('/food/ingredients/') && endpoint.includes('/information')) return 60 * 60 * 24 * 30; //30 days
+  if (endpoint.includes('/information')) return 60 * 60 * 24 * 7;    //7 days (general recipe info)
+  if (endpoint.includes('/nutritionWidget.json')) return 60 * 60 * 24 * 7; //7 days
   if (endpoint.includes('/similar')) return 60 * 60 * 24; //1 day
   if (endpoint.includes('/analyzedInstructions')) return 60 * 60 * 24 * 7; //7 days
-  if (endpoint.startsWith('/mealplanner/generate')) return 60 * 10; //10 min (if you cache)
+  if (endpoint.startsWith('/mealplanner/generate')) return 60 * 10; //10 min
   if (endpoint.startsWith('/recipes/random')) return null; //random should be random
   return 60 * 60; //fallback 1 hour
 }
@@ -77,11 +77,7 @@ async function spoonacularFetch<T>(
 
     return response.json();
   };
-  if (ttl === null) {
-    return fetcher();
-  }
-
-  const swr = swrWindowsFor(endpoint); //Check to see the fresh and stale vals
+  const swr = swrWindowsFor(endpoint);
   if (!swr) return fetcher();
 
   const cacheKey = stableKey('spoonacular', endpoint, params);
