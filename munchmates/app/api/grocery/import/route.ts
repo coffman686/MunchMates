@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { normalize } from "@/lib/normalize";
 
 interface AggregatedIngredient {
     name: string;
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
             where: { userId: p.sub },
         });
         const existingByName = new Map(
-            existingItems.map((item) => [item.name.toLowerCase(), item])
+            existingItems.map((item) => [normalize(item.name), item])
         );
 
         // Ensure categories exist
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
 
         for (const ingredient of aggregatedItems) {
             const name = String(ingredient.name).trim().slice(0, 200);
-            const nameLower = name.toLowerCase();
+            const nameLower = normalize(name);
             const quantity = formatQuantity(ingredient.totalAmount, ingredient.unit);
             const category = String(ingredient.category || "Uncategorized")
                 .trim()

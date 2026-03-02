@@ -146,6 +146,7 @@ model PantryItem {
   id         Int       @id @default(autoincrement())
   userId     String
   name       String
+  canonName  String    @default("")
   quantity   String
   category   String
   expiryDate DateTime?
