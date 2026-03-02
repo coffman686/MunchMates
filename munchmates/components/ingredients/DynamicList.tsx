@@ -503,13 +503,6 @@ export default function IngredientList({
     );
   };
 
-  const addAllPantryItems = () => {
-    const newItems = pantryItems
-      .map(item => item.name)
-      .filter(name => !ingredients.includes(name));
-    setIngredients(prev => [...prev, ...newItems]);
-  }
-
   const clearIngredients = () => {
     setIngredients([]);
   }
@@ -594,14 +587,6 @@ export default function IngredientList({
                 onClick={clearIngredients}
             >
               Clear List
-            </Button>
-
-            <Button
-              type="button"
-              onClick={() => addAllPantryItems()}
-              className="inline-flex items-center gap-2"
-            >
-                What Can I Make?
             </Button>
 
             {children}

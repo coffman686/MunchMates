@@ -193,7 +193,7 @@ const Recipes = () => {
 
 
     // handle search button click
-    const handleSearch = async () => {
+    const handleSearch = async (ingredientList: string[]) => {
         const ingredientListString = ingredientList.join(',').toLowerCase();
         setDiet(getDiets());
         setIntolerances(getIntolerances());
@@ -371,7 +371,22 @@ const Recipes = () => {
             console.error('Error removing saved recipe:', error);
         }
     };
-
+    const handleWhatCanIMake = async () => {
+        try {
+            const response = await authedFetch('/api/pantry');
+            if (response.ok) {
+                const data = await response.json();
+                const pantryItems: string[] = data.items.map((item: any) => item.name);
+                const updatedIngredientList = Array.from(new Set([...ingredientList, ...pantryItems]));
+                setIngredientList(updatedIngredientList);
+                handleSearch(updatedIngredientList);
+            } else {
+                console.error('Failed to fetch pantry items');
+            }
+        } catch (error) {
+            console.error('Error fetching pantry items:', error);
+        }
+    }
     // main render for Recipes component
     // includes header, search, filters, and recipe grid
     return (
@@ -390,7 +405,7 @@ const Recipes = () => {
                                 >
                                     <Button
                                         type="button"
-                                        onClick={handleSearch}
+                                        onClick={() => handleSearch(ingredientList)}
                                         className="inline-flex items-center gap-2"
                                     >
                                         <Search className="h-4 w-4" />
@@ -405,7 +420,13 @@ const Recipes = () => {
                                         <Plus className="h-4 w-4" />
                                         Create New Recipe
                                     </Button>
-
+                                    <Button
+                                        type="button"
+                                        onClick={handleWhatCanIMake}
+                                        className="inline-flex items-center gap-2"
+                                    >
+                                        What Can I Make?
+                                    </Button>
                                     <Button
                                         type="button"
                                         onClick={() => router.push('/recipes/saved')}
