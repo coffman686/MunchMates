@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyBearer } from "@/lib/verifyToken";
-import { errorResponse, handleRouteError } from "@/lib/apiErrors";
+import { handleRouteError } from "@/lib/apiErrors";
 
 // GET /api/users/search?q=<query> — Search users by name or username
 export async function GET(req: NextRequest) {
