@@ -1,3 +1,15 @@
+// File: RecipeDetailPage
+// Purpose: Render the full details for a specific recipe ID
+// Inputs: recipeId extracted from the URL path
+// Outputs: Full recipe view including metadata, ingredients, and instructions
+// Fetches recipe information, instructions, and saved-status
+// Supports both Spoonacular recipes and custom user-created recipes.
+// Checks the local DB first — if found, it's a custom recipe fetched from
+// /api/recipes/create. Otherwise falls back to Spoonacular.
+// Custom recipes use plain-text instructions (no structured steps).
+// Allows user to save/unsave recipes
+// Handles redirect if route matches /recipes/saved
+
 "use client";
 
 import { useState, useEffect } from "react";

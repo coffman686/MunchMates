@@ -1,3 +1,10 @@
+// MealSlot.tsx
+// Container for recipe elements on meal plan view
+// - Holds a draggable recipe or empty slot
+// - Allows user to add a new recipe to the list
+// - Existing recipes can be dropped into an empty slot
+// - Currently holds 3 time slots for meals
+
 'use client';
 
 import { useDroppable } from '@dnd-kit/core';

@@ -1,3 +1,9 @@
+// app/(app)/profile/page.tsx serves as the user's "profile" page.
+// Right now all data is stored locally for user's information aside from what
+// is kept on the Keycloak server. That information is pulled using a route,
+// and the dietary info/allergies are stored locally until we have the money to
+// implement a larger database for the operational site
+
 "use client";
 
 import { useEffect, useState, Dispatch, SetStateAction } from "react";

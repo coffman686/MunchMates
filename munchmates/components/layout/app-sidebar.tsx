@@ -1,3 +1,15 @@
+// Application Sidebar Component
+// Provides the collapsible left-hand navigation used across authenticated pages.
+// Includes:
+// - App logo + collapse toggle
+// - Primary navigation links (Dashboard, Recipes, Planner, Pantry, etc.)
+// - Footer section with Settings link
+// Behavior:
+// - Collapsible via icon toggle (shrinks to icon-only mode)
+// - Highlights active route using Next.js pathname
+// - Uses shared UI primitives (Sidebar, Avatar, Buttons)
+// Central piece of the app layout used in all main views.
+
 "use client";
 
 import Link from "next/link";

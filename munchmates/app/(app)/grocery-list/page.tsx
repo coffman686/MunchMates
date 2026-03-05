@@ -1,3 +1,18 @@
+// Grocery List Page
+// Implements the MunchMates grocery list experience with database persistence
+// and optional imports from the meal planner.
+// Features:
+// - Database persistence via /api/grocery — data syncs across devices
+// - Import and merge of aggregated ingredients from the meal planner via
+//   `pending-grocery-items` and `fromMealPlan=true` URL flag (calls API import endpoint)
+// - Category-based organization with per-category cards and item counts
+// - Inline editing of item name, quantity, and category with keyboard shortcuts
+// - Filters for All / To Buy / Completed plus summary stats (total, active, done)
+// - Image-powered item entry via ImageClassificationDialog ("Add via image")
+// - Category management (add/delete, with safe reassignment of affected items)
+// - Bulk actions to clear completed items or wipe the entire list
+// - Suspense fallback layout that preserves the app shell while URL params load.
+
 'use client';
 
 import { useState, useEffect, useRef, Suspense, useCallback } from 'react';

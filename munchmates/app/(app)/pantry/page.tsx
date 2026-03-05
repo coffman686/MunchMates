@@ -1,3 +1,19 @@
+// Pantry Page
+// Implements the MunchMates pantry management experience with database persistence
+// and support for expiry-awareness and image-based item entry.
+//
+// Features:
+// - Auth-gated page wrapped in RequireAuth + SidebarProvider + AppSidebar/AppHeader
+//   so it fits the main application shell.
+// - Database persistence via /api/pantry — data syncs across devices
+// - Add Item form:
+//   - Name, quantity, category (via <Select>), optional expiry date
+//   - "Add via image" opens ImageClassificationDialog and pre-fills the item name
+//   - Enter key support to quickly add items from the keyboard.
+// - Inline edit support per item:
+//   - Click the pencil icon to edit name, quantity, category, and expiry date
+//   - Save/Cancel actions, with Enter/Escape keyboard handling.
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';

@@ -1,3 +1,9 @@
+// DraggableRecipeCard
+// Recipe card element with support for movement via mouse
+// - Allows user to move the card around the page
+// - Update serving count for a recipe
+// - Allows deletion of recipe
+
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';

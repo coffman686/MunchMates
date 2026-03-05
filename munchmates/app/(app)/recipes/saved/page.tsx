@@ -1,3 +1,13 @@
+// Saved Recipes Page
+// Displays the user's saved/favorited recipes and allows managing them.
+// Features:
+// - Fetches saved recipes from `/api/recipes/saved` via `authedFetch`
+// - Responsive card grid with recipe images and saved-date display
+// - Remove saved recipe with optimistic UI update
+// - Add recipe to a shared collection via dialog with collection picker
+// - Lazy-loads shared collections list when the dialog is opened
+// - Empty state prompting the user to browse and save recipes
+
 'use client';
 
 import { useState, useEffect } from 'react';

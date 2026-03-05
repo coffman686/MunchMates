@@ -1,3 +1,8 @@
+// File: layout.tsx
+// Purpose: Provide layout for recipe pages with tab navigation
+// Inputs: children (main content)
+// Outputs: Combined page layout with tab bar and content area
+
 'use client';
 
 import RequireAuth from '@/components/RequireAuth';
