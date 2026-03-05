@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
+            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
+            create: { id: p.sub, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
         // Get existing items for this user
@@ -48,6 +48,15 @@ export async function POST(req: NextRequest) {
         });
         const existingByName = new Map(
             existingItems.map((item) => [normalize(item.name), item])
+        );
+
+        // Fetch pantry items to filter out ingredients user already has
+        const pantryItems = await prisma.pantryItem.findMany({
+            where: { userId: p.sub },
+            select: { canonName: true, name: true },
+        });
+        const pantryCanonNames = new Set(
+            pantryItems.map((item) => item.canonName || normalize(item.name))
         );
 
         // Ensure categories exist
@@ -81,10 +90,18 @@ export async function POST(req: NextRequest) {
         // Process each ingredient
         let addedCount = 0;
         let updatedCount = 0;
+        let filteredCount = 0;
 
         for (const ingredient of aggregatedItems) {
             const name = String(ingredient.name).trim().slice(0, 200);
             const nameLower = normalize(name);
+
+            // Skip items the user already has in their pantry
+            if (pantryCanonNames.has(nameLower)) {
+                filteredCount++;
+                continue;
+            }
+
             const quantity = formatQuantity(ingredient.totalAmount, ingredient.unit);
             const category = String(ingredient.category || "Uncategorized")
                 .trim()
@@ -129,6 +146,7 @@ export async function POST(req: NextRequest) {
             message: "Items imported from meal plan",
             addedCount,
             updatedCount,
+            filteredCount,
             totalProcessed: aggregatedItems.length,
         });
     } catch (error) {

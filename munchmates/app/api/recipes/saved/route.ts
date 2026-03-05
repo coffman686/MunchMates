@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: userId },
-            update: {},
-            create: { id: userId },
+            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
+            create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
         const newSavedRecipe = await prisma.savedRecipe.create({

@@ -1,10 +1,10 @@
 // DynamicList.tsx
-// List that supports a dynamic number of items and several views (list, ship, etc)
+// Ingredient chip list with Autosuggest input and add-from sources
 // Paired with Autosuggest to provide ingredient display and input component
 // - Completes items from presupplied list of ingredients and currently selected items
-// - Provides additional dropdowns grocery list and pantry items (fetched via API)
+// - Provides additional dropdowns for grocery list and pantry items (fetched via API)
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Autosuggest from "./Autosuggest";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -470,7 +470,6 @@ export default function IngredientList({
     .filter((item) => !ingredients.includes(item.canonName))
     .map((item) => ({ name: item.name, canonName: item.canonName }));
 
-  // TODO: replace, needed for testing
   const addIngredient = (item: string) => {
     if (item.trim() !== "" && !ingredients.includes(item)) {
       setIngredients((prevIngredients) => [...prevIngredients, item]);
@@ -497,7 +496,6 @@ export default function IngredientList({
     }
   };
 
-  // TODO: replace, needed for testing
   const handleDeleteIngredient = (index: number) => {
     setIngredients((prevIngredients) =>
       prevIngredients.filter((_, i) => i !== index),
@@ -507,27 +505,62 @@ export default function IngredientList({
   const clearIngredients = () => {
     setIngredients([]);
   }
+
+  const COLLAPSED_LIMIT = 8;
+  const [expanded, setExpanded] = useState(false);
+
+  const visibleIngredients = useMemo(() => {
+    if (expanded || ingredients.length <= COLLAPSED_LIMIT) return ingredients;
+    return ingredients.slice(0, COLLAPSED_LIMIT);
+  }, [ingredients, expanded]);
+
+  const hiddenCount = ingredients.length - visibleIngredients.length;
+
   return (
-      <div className="flex-1 max-w-3xl">
-        <ul className="flex flex-wrap">
-          {ingredients.map((ingredient, index) => (
-              <li key={ingredient} className="p-0.5">
-                <Badge
-                    className="justify-between"
-                >
-                  {ingredient}
-                  <Button
-                      type="button"
-                      variant="ghost"
-                      className="size-6 p-0 rounded-full"
-                      onClick={() => handleDeleteIngredient(index)}
+      <div className="w-full">
+        {ingredients.length > 0 && (
+          <ul className="flex flex-wrap">
+            {visibleIngredients.map((ingredient, index) => (
+                <li key={ingredient} className="p-0.5">
+                  <Badge
+                      className="justify-between"
                   >
-                    <XIcon className="inline justify-center"/>
-                  </Button>
+                    {ingredient}
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        className="size-6 p-0 rounded-full"
+                        onClick={() => handleDeleteIngredient(index)}
+                    >
+                      <XIcon className="inline justify-center"/>
+                    </Button>
+                  </Badge>
+                </li>
+            ))}
+            {hiddenCount > 0 && (
+              <li className="p-0.5">
+                <Badge
+                  variant="outline"
+                  className="cursor-pointer hover:bg-accent transition-colors"
+                  onClick={() => setExpanded(true)}
+                >
+                  +{hiddenCount} more
                 </Badge>
               </li>
-          ))}
-        </ul>
+            )}
+            {expanded && ingredients.length > COLLAPSED_LIMIT && (
+              <li className="p-0.5">
+                <Badge
+                  variant="outline"
+                  className="cursor-pointer hover:bg-accent transition-colors"
+                  onClick={() => setExpanded(false)}
+                >
+                  show less
+                </Badge>
+              </li>
+            )}
+          </ul>
+        )}
 
         <form className="relative mt-4 space-y-3" onSubmit={handleAddIngredient}>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -536,6 +569,10 @@ export default function IngredientList({
                   data={[...data, ...ingredients]}
                   query={query}
                   setQuery={setQuery}
+                  onSelect={(item) => {
+                    addIngredient(item);
+                    setQuery("");
+                  }}
               />
             </div>
 
@@ -576,16 +613,15 @@ export default function IngredientList({
                 </SelectContent>
               </Select>
             )}
-          </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit">
+            <Button type="submit" className="shrink-0">
               Add ingredient
             </Button>
 
             <Button
                 type="button"
                 onClick={clearIngredients}
+                className="shrink-0"
             >
               Clear List
             </Button>

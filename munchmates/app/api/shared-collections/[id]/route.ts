@@ -71,7 +71,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         }
 
         const body = await req.json();
-        const { action, name, description, recipeId, recipeName } = body;
+        const { action, name, description, recipeId, recipeName, recipeImage } = body;
 
         switch (action) {
             case 'update': {
@@ -93,12 +93,14 @@ export async function PUT(req: NextRequest, context: RouteContext) {
             }
 
             case 'addRecipe': {
-                if (!recipeId || !recipeName) {
+                if (recipeId == null || !recipeName) {
                     return errorResponse(400, "recipeId and recipeName are required");
                 }
 
+                const numericRecipeId = Number(recipeId);
+
                 // Check if recipe already exists in collection
-                const existingRecipe = collection.recipes.find(r => r.recipeId === recipeId);
+                const existingRecipe = collection.recipes.find(r => r.recipeId === numericRecipeId);
                 if (existingRecipe) {
                     return NextResponse.json(
                         { message: "Recipe is already in this collection" },
@@ -109,8 +111,9 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                 await prisma.collectionRecipe.create({
                     data: {
                         collectionId,
-                        recipeId,
-                        recipeName,
+                        recipeId: numericRecipeId,
+                        recipeName: String(recipeName),
+                        recipeImage: recipeImage ? String(recipeImage) : null,
                         addedBy: userId,
                         addedByName: userName,
                     },
@@ -129,17 +132,18 @@ export async function PUT(req: NextRequest, context: RouteContext) {
             }
 
             case 'removeRecipe': {
-                if (!recipeId) {
+                if (recipeId == null) {
                     return errorResponse(400, "recipeId is required");
                 }
 
-                const existingRecipe = collection.recipes.find(r => r.recipeId === recipeId);
+                const numericRemoveId = Number(recipeId);
+                const existingRecipe = collection.recipes.find(r => r.recipeId === numericRemoveId);
                 if (!existingRecipe) {
                     return errorResponse(404, "Recipe not found in collection");
                 }
 
                 await prisma.collectionRecipe.delete({
-                    where: { collectionId_recipeId: { collectionId, recipeId } },
+                    where: { collectionId_recipeId: { collectionId, recipeId: numericRemoveId } },
                 });
 
                 const updated = await prisma.sharedCollection.findUnique({

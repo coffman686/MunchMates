@@ -7,55 +7,43 @@
 // - Today’s meal plan (breakfast / lunch / dinner) with quick links to recipes
 // - Quick action cards for Recipes, Meal Planner, Grocery List, Pantry,
 //   Shared Collections, and Community
-// - Pantry alerts for items expiring soon (localStorage-backed)
-// - Grocery list summary with active item count (localStorage-backed)
-// - Saved recipes preview (localStorage-backed favorites)
-// - Shared collections preview from /api/shared-collections
-// - Weekly stats for meals planned, saved recipes, pantry alerts, collections
+// - Pantry alerts for items expiring soon (API-backed via /api/pantry)
+// - Grocery list summary with active item count (API-backed via /api/grocery)
+// - Saved recipes preview (API-backed via /api/recipes/saved)
+// - Popular recipes carousel from Spoonacular
+// - Weekly stats for meals planned and pantry alerts
 // Behavior:
-// - Prefers authenticated API data but gracefully falls back to localStorage
+// - Fetches all data from authenticated API endpoints
 // - Initializes a dietary preferences dialog on first visit via local flag
 // - Designed as the central hub tying together all major app features.
 
 'use client';
 
-// import all necessary modules and components
 import RequireAuth from '@/components/RequireAuth';
 import { ensureToken, getParsedIdToken, getAccessTokenClaims, keycloak } from '@/lib/keycloak';
 import { useEffect, useState } from 'react';
 import { authedFetch } from '@/lib/authedFetch';
-import AppHeader from '@/components/layout/app-header';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/layout/app-sidebar';
 import Link from 'next/link';
 import Image from 'next/image';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle
-} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
-    BookOpen,
-    CalendarDays,
-    ShoppingCart,
-    Warehouse,
-    Users,
     ArrowRight,
-    Clock,
-    AlertTriangle,
-    Heart,
     Utensils,
     Coffee,
     Moon,
-    ChefHat,
-    Sparkles,
-    FolderHeart
+    RefreshCw,
+    Clock,
+    Heart,
+    AlertTriangle,
+    ShoppingCart,
+    Check,
+    FolderHeart,
 } from 'lucide-react';
+import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
 import { DietaryDialog } from '@/components/ingredients/Dietary';
+import RecipeCard from '@/components/recipes/RecipeCard';
 
 // initialize types
 type IdClaims = { name?: string; preferred_username?: string; email?: string };
@@ -105,24 +93,13 @@ interface GroceryItem {
     fromMealPlan?: boolean;
 }
 
-// Saved recipes
-interface SavedRecipe {
-    recipeId: number;
-    recipeName: string;
-    savedAt: string;
-    recipeImage?: string;
-}
-
-// Shared recipes
-interface SharedCollection {
-    id: string;
-    name: string;
-    description: string;
-    createdBy: string;
-    createdByName: string;
-    createdAt: string;
-    members: { userId: string; userName: string; role: string; joinedAt: string }[];
-    recipes: { recipeId: number; recipeName: string; addedBy: string; addedByName: string; addedAt: string }[];
+// Popular recipes from Spoonacular
+interface PopularRecipe {
+    id: number;
+    title: string;
+    image?: string;
+    readyInMinutes?: number;
+    servings?: number;
 }
 
 // helper function to get Monday of the week for a given date
@@ -185,10 +162,14 @@ export default function Dashboard() {
     const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null);
     const [pantryAlerts, setPantryAlerts] = useState<PantryItem[]>([]);
     const [groceryCount, setGroceryCount] = useState(0);
-    const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
-    const [collections, setCollections] = useState<SharedCollection[]>([]);
-    const [weeklyStats, setWeeklyStats] = useState({ mealsPlanned: 0, recipesTotal: 0 });
+    const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
+    const [weeklyStats, setWeeklyStats] = useState({ mealsPlanned: 0 });
     const [tipOfDay, setTipOfDay] = useState('');
+    const [popularRecipes, setPopularRecipes] = useState<PopularRecipe[]>([]);
+    const [popularLoading, setPopularLoading] = useState(false);
+
+    // saved / favorite recipes
+    const [savedRecipeIds, setSavedRecipeIds] = useState<Set<number>>(new Set());
 
     // dietary preferences modal state
     const [dietModal, setDietModal] = useState(false);
@@ -325,456 +306,343 @@ export default function Dashboard() {
         loadPantryAlerts();
     }, []);
 
-    // load grocery list and count active items (from API)
+    // load grocery list items (from API)
     useEffect(() => {
-        const loadGroceryCount = async () => {
+        const loadGrocery = async () => {
             try {
                 const res = await authedFetch('/api/grocery');
                 if (res.ok) {
                     const data = await res.json();
                     const items: GroceryItem[] = data.items || [];
-                    const activeCount = items.filter(i => !i.completed).length;
-                    setGroceryCount(activeCount);
+                    setGroceryItems(items.filter(i => !i.completed).slice(0, 8));
+                    setGroceryCount(items.filter(i => !i.completed).length);
                 }
             } catch {
                 // silently fail
             }
         };
-        loadGroceryCount();
+        loadGrocery();
     }, []);
 
-    // load saved recipes from API and show most recent 4
+    // load saved recipe IDs from API
     useEffect(() => {
         let cancelled = false;
-        const loadSavedRecipes = async () => {
+        const loadSaved = async () => {
             try {
                 const res = await authedFetch('/api/recipes/saved');
                 if (cancelled) return;
-                if (res.status === 401) {
-                    setTimeout(loadSavedRecipes, 300);
-                    return;
-                }
                 if (res.ok) {
                     const data = await res.json();
-                    const recipes: SavedRecipe[] = data.recipes || [];
-                    const recent = recipes
-                        .sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
-                        .slice(0, 4);
-                    setSavedRecipes(recent);
-                    setWeeklyStats(prev => ({ ...prev, recipesTotal: recipes.length }));
+                    const ids = (data.recipes || []).map((r: { recipeId: number }) => r.recipeId);
+                    setSavedRecipeIds(new Set(ids));
                 }
-            } catch {
-                // silently fail
-            }
+            } catch { /* silently fail */ }
         };
-        loadSavedRecipes();
+        loadSaved();
         return () => { cancelled = true; };
     }, []);
 
-    // load shared collections and show up to 3
-    useEffect(() => {
-        const loadCollections = async () => {
-            try {
-                const res = await authedFetch('/api/shared-collections');
-                if (res.ok) {
-                    const data = await res.json();
-                    const collectionsArray: SharedCollection[] = data.collections || [];
-                    setCollections(collectionsArray.slice(0, 3));
-                }
-            } catch {
-                // catch errors silently
+    // toggle save/unsave a recipe
+    const toggleSaveRecipe = async (recipeId: number, title: string, image?: string) => {
+        const isSaved = savedRecipeIds.has(recipeId);
+        setSavedRecipeIds(prev => {
+            const next = new Set(prev);
+            if (isSaved) next.delete(recipeId); else next.add(recipeId);
+            return next;
+        });
+        try {
+            if (isSaved) {
+                await authedFetch(`/api/recipes/saved?recipeId=${recipeId}`, { method: 'DELETE' });
+            } else {
+                await authedFetch('/api/recipes/saved', {
+                    method: 'POST',
+                    body: JSON.stringify({ recipeId, recipeName: title, recipeImage: image }),
+                });
             }
-        };
-        loadCollections();
+        } catch { /* silently fail */ }
+    };
+
+    const collectionDialog = useAddToCollection();
+
+    // daily-rotating offset for popular recipes (changes each day)
+    function getDailyOffset(): number {
+        const todayStr = formatLocalDateStr(new Date());
+        const saved = localStorage.getItem('popularRecipeOffset');
+        if (saved) {
+            try {
+                const { date, offset } = JSON.parse(saved);
+                if (date === todayStr) return offset;
+            } catch { /* ignore bad data */ }
+        }
+        const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+        return (dayOfYear * 8) % 200;
+    }
+
+    // fetch popular recipes from Spoonacular
+    const fetchPopularRecipes = async (offset?: number) => {
+        setPopularLoading(true);
+        try {
+            const o = offset ?? getDailyOffset();
+            localStorage.setItem('popularRecipeOffset', JSON.stringify({
+                date: formatLocalDateStr(new Date()),
+                offset: o,
+            }));
+            const res = await fetch(`/api/spoonacular/recipes/popular?offset=${o}`);
+            if (res.ok) {
+                const data = await res.json();
+                setPopularRecipes((data.recipes || []).slice(0, 8));
+            }
+        } catch {
+            // silently fail
+        } finally {
+            setPopularLoading(false);
+        }
+    };
+
+    // load popular recipes on mount
+    useEffect(() => {
+        fetchPopularRecipes();
     }, []);
-    
-    // define quick action cards
-    const quickActions = [
-        { href: '/recipes', icon: BookOpen, label: 'Find Recipes', description: 'Discover new dishes' },
-        { href: '/meal-planner', icon: CalendarDays, label: 'Plan Meals', description: 'Organize your week' },
-        { href: '/grocery-list', icon: ShoppingCart, label: 'Grocery List', description: `${groceryCount} items to buy` },
-        { href: '/pantry', icon: Warehouse, label: 'Check Pantry', description: 'Manage ingredients' },
-        { href: '/shared-collections', icon: FolderHeart, label: 'Collections', description: 'Shared recipes' },
-        { href: '/community', icon: Users, label: 'Community', description: 'Connect with others' },
+
+    const mealSlots: { key: 'breakfast' | 'lunch' | 'dinner'; label: string; icon: typeof Coffee; color: string; bg: string }[] = [
+        { key: 'breakfast', label: 'Breakfast', icon: Coffee, color: '#FF9F0A', bg: 'rgba(255,159,10,0.12)' },
+        { key: 'lunch', label: 'Lunch', icon: Utensils, color: '#30D158', bg: 'rgba(48,209,88,0.12)' },
+        { key: 'dinner', label: 'Dinner', icon: Moon, color: '#5E5CE6', bg: 'rgba(94,92,230,0.12)' },
     ];
 
-    // render dashboard
-    // includes welcome section, today's meals, quick actions, pantry alerts, grocery list, saved recipes, and shared collections
+    const hasMeals = todayPlan && (todayPlan.breakfast || todayPlan.lunch || todayPlan.dinner);
+
+    // Shared card style — Apple: no border, soft shadow, big radius
+    const card = 'rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)]';
     return (
         <RequireAuth>
-            <SidebarProvider>
+            <SidebarProvider defaultOpen={false}>
                 <div className="min-h-screen flex w-full">
                     <AppSidebar />
                     <div className="flex-1 flex flex-col">
-                        <AppHeader title="Dashboard" />
-
                         <main className="flex-1 p-6 bg-muted/20">
-                            <div className="w-full space-y-6">
+                            <div className="w-full space-y-5">
 
-                                {/* reneder welcome section */}
-                                <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border p-6 md:p-8">
-                                    <div className="relative z-10">
-                                        <div className="flex items-center gap-2 text-primary mb-2">
-                                            <Sparkles className="h-5 w-5" />
-                                            <span className="text-sm font-medium">{formatDate(new Date())}</span>
+                            {/* ── Hero + Stats ── */}
+                            <div className="relative overflow-hidden rounded-2xl px-6 pt-5 pb-4"
+                                 style={{ background: 'linear-gradient(135deg, hsl(14 80% 52% / 0.18) 0%, hsl(30 90% 55% / 0.12) 50%, hsl(350 70% 60% / 0.08) 100%)' }}>
+                                <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full"
+                                     style={{ background: 'radial-gradient(circle, hsl(14 70% 55% / 0.15), transparent 65%)' }} />
+                                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-4 mb-0.5">
+                                            <h1 className="text-2xl font-bold tracking-tight leading-tight truncate">
+                                                {getGreeting()}, {name || 'Chef'}!
+                                            </h1>
+                                            <span className="text-[12px] font-medium text-primary/70 shrink-0 hidden sm:block">{formatDate(new Date())}</span>
                                         </div>
-                                        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                                            {getGreeting()}, {name || 'Chef'}!
-                                        </h1>
-                                        <p className="mt-2 text-muted-foreground max-w-xl">
+                                        <p className="text-[14px] text-muted-foreground truncate">
                                             {tipOfDay}
                                         </p>
                                     </div>
-                                    <ChefHat className="absolute right-4 bottom-4 h-24 w-24 text-primary/10" />
-                                </div>
-
-                                {/* render todays meals */}
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between">
-                                        <div>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <Utensils className="h-5 w-5 text-primary" />
-                                                Today&apos;s Meals
-                                            </CardTitle>
-                                            <CardDescription>What&apos;s cooking today?</CardDescription>
-                                        </div>
-                                        <Button variant="ghost" size="sm" asChild>
-                                            <Link href="/meal-planner">
-                                                View Week <ArrowRight className="ml-1 h-4 w-4" />
+                                    <div className="flex items-center gap-2.5 shrink-0">
+                                        {[
+                                            { label: 'pantry alerts', value: pantryAlerts.length, color: '#FF453A', href: '/pantry' },
+                                            { label: `of 21 meals`, value: weeklyStats.mealsPlanned, color: '#30D158', href: '/meal-planner' },
+                                            { label: 'grocery items', value: groceryCount, color: '#0A84FF', href: '/grocery-list' },
+                                        ].map((stat) => (
+                                            <Link key={stat.label} href={stat.href}
+                                                  className="flex items-center gap-1.5 rounded-full bg-white/60 dark:bg-white/10 backdrop-blur-sm px-3 py-1 hover:bg-white/80 dark:hover:bg-white/20 transition-colors">
+                                                <span className="text-[13px] font-bold" style={{ color: stat.color }}>{stat.value}</span>
+                                                <span className="text-[12px] text-foreground/60">{stat.label}</span>
                                             </Link>
-                                        </Button>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {todayPlan && (todayPlan.breakfast || todayPlan.lunch || todayPlan.dinner) ? (
-                                            <div className="grid gap-4 md:grid-cols-3">
-                                                {/* render breakfast card */}
-                                                {todayPlan.breakfast ? (
-                                                    <Link href={`/recipes/${todayPlan.breakfast.recipeId}`}>
-                                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
-                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-                                                                <Coffee className="h-5 w-5" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-medium text-muted-foreground">Breakfast</p>
-                                                                <p className="font-medium truncate">{todayPlan.breakfast.title}</p>
-                                                            </div>
-                                                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                                                        </div>
-                                                    </Link>
-                                                ) : (
-                                                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-                                                            <Coffee className="h-5 w-5" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs font-medium text-muted-foreground">Breakfast</p>
-                                                            <p className="text-sm text-muted-foreground">Not planned</p>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
 
-                                                {/* render lunch card */}
-                                                {todayPlan.lunch ? (
-                                                    <Link href={`/recipes/${todayPlan.lunch.recipeId}`}>
-                                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
-                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600">
-                                                                <Utensils className="h-5 w-5" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-medium text-muted-foreground">Lunch</p>
-                                                                <p className="font-medium truncate">{todayPlan.lunch.title}</p>
-                                                            </div>
-                                                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                                                        </div>
-                                                    </Link>
-                                                ) : (
-                                                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600">
-                                                            <Utensils className="h-5 w-5" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs font-medium text-muted-foreground">Lunch</p>
-                                                            <p className="text-sm text-muted-foreground">Not planned</p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* render dinner card */}
-                                                {todayPlan.dinner ? (
-                                                    <Link href={`/recipes/${todayPlan.dinner.recipeId}`}>
-                                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
-                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                                                                <Moon className="h-5 w-5" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-medium text-muted-foreground">Dinner</p>
-                                                                <p className="font-medium truncate">{todayPlan.dinner.title}</p>
-                                                            </div>
-                                                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                                                        </div>
-                                                    </Link>
-                                                ) : (
-                                                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                                                            <Moon className="h-5 w-5" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs font-medium text-muted-foreground">Dinner</p>
-                                                            <p className="text-sm text-muted-foreground">Not planned</p>
-                                                        </div>
-                                                    </div>
-                                                )}
+                            {/* ── Today's Meals ── */}
+                            <div className={`${card} p-1.5`}>
+                                <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border/50">
+                                    {mealSlots.map(({ key, label, icon: Icon, color, bg }) => {
+                                        const meal = hasMeals ? todayPlan?.[key] : undefined;
+                                        const content = (
+                                            <div className={`flex items-center gap-3.5 px-4 py-3.5 rounded-xl ${meal ? 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05] cursor-pointer' : 'opacity-45'} transition-colors`}>
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: bg }}>
+                                                    <Icon className="h-[18px] w-[18px]" style={{ color }} />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+                                                    {meal ? (
+                                                        <p className="font-semibold text-[14px] truncate leading-snug mt-0.5">{meal.title}</p>
+                                                    ) : (
+                                                        <p className="text-[14px] text-muted-foreground/50 mt-0.5">Not planned</p>
+                                                    )}
+                                                </div>
+                                                {meal && <ArrowRight className="h-4 w-4 text-muted-foreground/30 shrink-0" />}
                                             </div>
+                                        );
+                                        return meal ? (
+                                            <Link key={key} href={`/recipes/${meal.recipeId}`} className="block">{content}</Link>
                                         ) : (
-                                            <div className="text-center py-8">
-                                                <Utensils className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                                                <p className="mt-2 text-muted-foreground">No meals planned for today</p>
-                                                <Button className="mt-4" asChild>
-                                                    <Link href="/meal-planner">Plan Today&apos;s Meals</Link>
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
+                                            <div key={key}>{content}</div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
 
-                                {/* render all quick actions */}
-                                <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-                                    {quickActions.map((action) => (
-                                        <Link key={action.href} href={action.href}>
-                                            <Card className="h-full transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
-                                                <CardContent className="flex flex-col items-center justify-center p-4 text-center">
-                                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-3">
-                                                        <action.icon className="h-6 w-6 text-primary" />
-                                                    </div>
-                                                    <p className="font-medium text-sm">{action.label}</p>
-                                                    <p className="text-xs text-muted-foreground mt-1">{action.description}</p>
-                                                </CardContent>
-                                            </Card>
+                            {/* ── Popular Recipes ── */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <h2 className="text-xl font-bold tracking-tight">Popular Recipes</h2>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => fetchPopularRecipes(Math.floor(Math.random() * 200))}
+                                            disabled={popularLoading}
+                                            className="text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 disabled:opacity-40"
+                                        >
+                                            <RefreshCw className={`h-3.5 w-3.5 ${popularLoading ? 'animate-spin' : ''}`} />
+                                            Refresh
+                                        </button>
+                                        <Link href="/recipes" className="text-[13px] font-semibold text-primary hover:text-primary/70 transition-colors flex items-center gap-0.5">
+                                            Browse All <ArrowRight className="h-3.5 w-3.5" />
                                         </Link>
-                                    ))}
+                                    </div>
                                 </div>
-
-                                <div className="grid gap-6 lg:grid-cols-2">
-                                    {/* render pantry alerts */}
-                                    <Card>
-                                        <CardHeader className="flex flex-row items-center justify-between">
-                                            <div>
-                                                <CardTitle className="flex items-center gap-2">
-                                                    <AlertTriangle className="h-5 w-5 text-amber-500" />
-                                                    Pantry Alerts
-                                                </CardTitle>
-                                                <CardDescription>Items expiring soon</CardDescription>
-                                            </div>
-                                            <Button variant="ghost" size="sm" asChild>
-                                                <Link href="/pantry">
-                                                    View All <ArrowRight className="ml-1 h-4 w-4" />
-                                                </Link>
-                                            </Button>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {pantryAlerts.length > 0 ? (
-                                                <div className="space-y-3">
-                                                    {pantryAlerts.map((item) => {
-                                                        const days = getDaysUntilExpiry(item.expiryDate!);
-                                                        return (
-                                                            <div key={item.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                                                                <div>
-                                                                    <p className="font-medium">{item.name}</p>
-                                                                    <p className="text-xs text-muted-foreground">{item.quantity}</p>
-                                                                </div>
-                                                                <Badge variant={days <= 3 ? "destructive" : "secondary"}>
-                                                                    <Clock className="mr-1 h-3 w-3" />
-                                                                    {days === 0 ? 'Today' : days === 1 ? '1 day' : `${days} days`}
-                                                                </Badge>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            ) : (
-                                                <div className="text-center py-6">
-                                                    <Warehouse className="mx-auto h-10 w-10 text-muted-foreground/50" />
-                                                    <p className="mt-2 text-sm text-muted-foreground">No items expiring soon</p>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* render grocery list card */}
-                                    <Card>
-                                        <CardHeader className="flex flex-row items-center justify-between">
-                                            <div>
-                                                <CardTitle className="flex items-center gap-2">
-                                                    <ShoppingCart className="h-5 w-5 text-primary" />
-                                                    Grocery List
-                                                </CardTitle>
-                                                <CardDescription>Items to buy</CardDescription>
-                                            </div>
-                                            <Button variant="ghost" size="sm" asChild>
-                                                <Link href="/grocery-list">
-                                                    View List <ArrowRight className="ml-1 h-4 w-4" />
-                                                </Link>
-                                            </Button>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {groceryCount > 0 ? (
-                                                <div className="text-center py-6">
-                                                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                                                        <span className="text-2xl font-bold text-primary">{groceryCount}</span>
-                                                    </div>
-                                                    <p className="mt-3 text-muted-foreground">
-                                                        {groceryCount === 1 ? 'item' : 'items'} on your list
-                                                    </p>
-                                                    <Button className="mt-4" variant="outline" asChild>
-                                                        <Link href="/grocery-list">Start Shopping</Link>
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <div className="text-center py-6">
-                                                    <ShoppingCart className="mx-auto h-10 w-10 text-muted-foreground/50" />
-                                                    <p className="mt-2 text-sm text-muted-foreground">Your grocery list is empty</p>
-                                                    <Button className="mt-4" variant="outline" asChild>
-                                                        <Link href="/meal-planner">Generate from Meal Plan</Link>
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                </div>
-
-                                {/* display saved recipes */}
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between">
-                                        <div>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <Heart className="h-5 w-5 text-red-500" />
-                                                Saved Recipes
-                                            </CardTitle>
-                                            <CardDescription>Your favorites</CardDescription>
+                                {popularRecipes.length > 0 ? (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {popularRecipes.slice(0, 4).map((recipe) => (
+                                            <RecipeCard
+                                                key={recipe.id}
+                                                id={recipe.id}
+                                                title={recipe.title}
+                                                image={recipe.image}
+                                                readyInMinutes={recipe.readyInMinutes}
+                                                servings={recipe.servings}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleSaveRecipe(recipe.id, recipe.title, recipe.image); }}
+                                                    className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 transition-colors"
+                                                >
+                                                    <Heart className={`h-3.5 w-3.5 ${savedRecipeIds.has(recipe.id) ? 'fill-red-500 text-red-500' : 'text-white/90'}`} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); collectionDialog.openDialog({ id: recipe.id, title: recipe.title, image: recipe.image }); }}
+                                                    className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-sm hover:bg-black/60 transition-colors"
+                                                >
+                                                    <FolderHeart className="h-3.5 w-3.5" />
+                                                </button>
+                                            </RecipeCard>
+                                        ))}
+                                    </div>
+                                ) : popularLoading ? (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <div key={i} className="aspect-[4/3] rounded-2xl bg-muted animate-pulse" />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className={`${card} py-14 flex flex-col items-center text-center`}>
+                                        <div className="flex h-16 w-16 items-center justify-center rounded-full mb-4" style={{ backgroundColor: 'rgba(255,159,10,0.1)' }}>
+                                            <Utensils className="h-7 w-7" style={{ color: '#FF9F0A' }} />
                                         </div>
-                                        <Button variant="ghost" size="sm" asChild>
-                                            <Link href="/recipes/saved">
-                                                View All <ArrowRight className="ml-1 h-4 w-4" />
-                                            </Link>
+                                        <h3 className="text-[16px] font-semibold mb-1">Couldn&apos;t load recipes</h3>
+                                        <p className="text-[13px] text-muted-foreground max-w-[280px] mb-5 leading-relaxed">
+                                            Try refreshing or browse recipes directly.
+                                        </p>
+                                        <Button className="rounded-full px-7 h-11 text-[14px] font-semibold shadow-[0_2px_12px_rgba(0,0,0,0.12)]" asChild>
+                                            <Link href="/recipes">Browse Recipes</Link>
                                         </Button>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {savedRecipes.length > 0 ? (
-                                            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-                                                {savedRecipes.map((recipe) => (
-                                                    <Link key={recipe.recipeId} href={`/recipes/${recipe.recipeId}`}>
-                                                        <div className="group relative aspect-[4/3] rounded-lg overflow-hidden bg-muted">
-                                                            {recipe.recipeImage ? (
-                                                                <Image
-                                                                    src={recipe.recipeImage}
-                                                                    alt={recipe.recipeName}
-                                                                    fill
-                                                                    className="object-cover transition-transform group-hover:scale-105"
-                                                                />
-                                                            ) : (
-                                                                <div className="flex h-full items-center justify-center">
-                                                                    <Utensils className="h-8 w-8 text-muted-foreground/50" />
-                                                                </div>
-                                                            )}
-                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                                                            <p className="absolute bottom-2 left-2 right-2 text-sm font-medium text-white truncate">
-                                                                {recipe.recipeName}
-                                                            </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ── Pantry Alerts + Grocery List ── */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                {/* Pantry Alerts */}
+                                <div className={card}>
+                                    <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(255,69,58,0.1)' }}>
+                                                <AlertTriangle className="h-4 w-4" style={{ color: '#FF453A' }} />
+                                            </div>
+                                            <h3 className="text-[15px] font-semibold">Expiring Soon</h3>
+                                        </div>
+                                        <Link href="/pantry" className="text-[12px] font-semibold text-primary hover:text-primary/70 transition-colors flex items-center gap-0.5">
+                                            View Pantry <ArrowRight className="h-3 w-3" />
+                                        </Link>
+                                    </div>
+                                    <div className="px-3 pb-3">
+                                        {pantryAlerts.length > 0 ? (
+                                            <div className="divide-y divide-border/50">
+                                                {pantryAlerts.map((item) => {
+                                                    const days = getDaysUntilExpiry(item.expiryDate!);
+                                                    return (
+                                                        <div key={item.id} className="flex items-center justify-between px-2 py-2.5">
+                                                            <span className="text-[13px] font-medium truncate">{item.name}</span>
+                                                            <span className={`text-[12px] font-semibold shrink-0 ml-3 px-2 py-0.5 rounded-full ${
+                                                                days <= 1
+                                                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                                    : days <= 3
+                                                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                                                    : 'bg-muted text-muted-foreground'
+                                                            }`}>
+                                                                {days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days}d left`}
+                                                            </span>
                                                         </div>
-                                                    </Link>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         ) : (
-                                            <div className="text-center py-8">
-                                                <Heart className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                                                <p className="mt-2 text-muted-foreground">No saved recipes yet</p>
-                                                <Button className="mt-4" asChild>
-                                                    <Link href="/recipes">Discover Recipes</Link>
-                                                </Button>
+                                            <div className="py-8 text-center">
+                                                <Check className="h-8 w-8 text-green-500/40 mx-auto mb-2" />
+                                                <p className="text-[13px] text-muted-foreground">Nothing expiring soon</p>
                                             </div>
                                         )}
-                                    </CardContent>
-                                </Card>
-
-                                <div className="grid gap-6 lg:grid-cols-2">
-                                    {/* render shared meal collections */}
-                                    <Card>
-                                        <CardHeader className="flex flex-row items-center justify-between">
-                                            <div>
-                                                <CardTitle className="flex items-center gap-2">
-                                                    <FolderHeart className="h-5 w-5 text-primary" />
-                                                    Shared Collections
-                                                </CardTitle>
-                                                <CardDescription>Recipes shared with you</CardDescription>
-                                            </div>
-                                            <Button variant="ghost" size="sm" asChild>
-                                                <Link href="/shared-collections">
-                                                    View All <ArrowRight className="ml-1 h-4 w-4" />
-                                                </Link>
-                                            </Button>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {collections.length > 0 ? (
-                                                <div className="space-y-3">
-                                                    {collections.map((collection) => (
-                                                        <Link key={collection.id} href={`/shared-collections/${collection.id}`}>
-                                                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                                                                <div>
-                                                                    <p className="font-medium">{collection.name}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {collection.recipes.length} recipes • {collection.members.length} members
-                                                                    </p>
-                                                                </div>
-                                                                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                                                            </div>
-                                                        </Link>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div className="text-center py-6">
-                                                    <FolderHeart className="mx-auto h-10 w-10 text-muted-foreground/50" />
-                                                    <p className="mt-2 text-sm text-muted-foreground">No shared collections yet</p>
-                                                    <Button className="mt-4" variant="outline" asChild>
-                                                        <Link href="/shared-collections">Create Collection</Link>
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* render weekly stats */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <CalendarDays className="h-5 w-5 text-primary" />
-                                                This Week
-                                            </CardTitle>
-                                            <CardDescription>Your weekly summary</CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                                    <p className="text-3xl font-bold text-primary">{weeklyStats.mealsPlanned}</p>
-                                                    <p className="text-sm text-muted-foreground mt-1">Meals Planned</p>
-                                                </div>
-                                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                                    <p className="text-3xl font-bold text-primary">{weeklyStats.recipesTotal}</p>
-                                                    <p className="text-sm text-muted-foreground mt-1">Saved Recipes</p>
-                                                </div>
-                                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                                    <p className="text-3xl font-bold text-primary">{pantryAlerts.length}</p>
-                                                    <p className="text-sm text-muted-foreground mt-1">Pantry Alerts</p>
-                                                </div>
-                                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                                    <p className="text-3xl font-bold text-primary">{collections.length}</p>
-                                                    <p className="text-sm text-muted-foreground mt-1">Collections</p>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                                    </div>
                                 </div>
+
+                                {/* Grocery List */}
+                                <div className={card}>
+                                    <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(10,132,255,0.1)' }}>
+                                                <ShoppingCart className="h-4 w-4" style={{ color: '#0A84FF' }} />
+                                            </div>
+                                            <h3 className="text-[15px] font-semibold">Grocery List</h3>
+                                            {groceryCount > 0 && (
+                                                <span className="text-[11px] font-bold text-primary bg-primary/10 rounded-full px-2 py-0.5">{groceryCount}</span>
+                                            )}
+                                        </div>
+                                        <Link href="/grocery-list" className="text-[12px] font-semibold text-primary hover:text-primary/70 transition-colors flex items-center gap-0.5">
+                                            Full List <ArrowRight className="h-3 w-3" />
+                                        </Link>
+                                    </div>
+                                    <div className="px-3 pb-3">
+                                        {groceryItems.length > 0 ? (
+                                            <div className="divide-y divide-border/50">
+                                                {groceryItems.map((item) => (
+                                                    <div key={item.id} className="flex items-center justify-between px-2 py-2.5">
+                                                        <span className="text-[13px] font-medium truncate">{item.name}</span>
+                                                        {item.quantity && (
+                                                            <span className="text-[12px] text-muted-foreground shrink-0 ml-3">{item.quantity}</span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {groceryCount > 8 && (
+                                                    <div className="px-2 py-2 text-center">
+                                                        <span className="text-[12px] text-muted-foreground">+{groceryCount - 8} more items</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="py-8 text-center">
+                                                <Check className="h-8 w-8 text-green-500/40 mx-auto mb-2" />
+                                                <p className="text-[13px] text-muted-foreground">Your grocery list is empty</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
 
                             </div>
-                            {/* dietary preferences dialog */}
                             <DietaryDialog
                                 isOpen={dietModal}
                                 closePopup={closeDiet}
@@ -783,6 +651,8 @@ export default function Dashboard() {
                                 intolerances={intolerances}
                                 setIntolerances={setIntolerances}
                             />
+
+                            <AddToCollectionDialog isOpen={collectionDialog.isOpen} onOpenChange={collectionDialog.setIsOpen} recipe={collectionDialog.recipe} />
                         </main>
                     </div>
                 </div>

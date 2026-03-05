@@ -7,6 +7,7 @@ const SPOONACULAR_API_BASE_URL = 'https://api.spoonacular.com';
 
 function ttlFor(endpoint: string): number | null {
   // return null = do not cache
+  if (endpoint.startsWith('/recipes/autocomplete')) return 60 * 30; //30 min
   if (endpoint.startsWith('/recipes/complexSearch')) return 60 * 30; //30 min
   if (endpoint.startsWith('/recipes/findByIngredients')) return 60 * 30; //30 min
   if (endpoint.startsWith('/food/ingredients/search')) return 60 * 60 * 24 * 30; //30 days
@@ -182,6 +183,12 @@ export interface NutritionInfo {
   protein: string;
 }
 
+export interface AutocompleteSuggestion {
+  id: number;
+  title: string;
+  imageType: string;
+}
+
 // recipe endpoints //
 
 
@@ -209,6 +216,17 @@ export async function searchRecipes(
     ...options,
   });
 }
+// autocomplete recipe names
+export async function autocompleteRecipes(
+  query: string,
+  number: number = 7
+): Promise<AutocompleteSuggestion[]> {
+  return spoonacularFetch<AutocompleteSuggestion[]>('/recipes/autocomplete', {
+    query,
+    number,
+  });
+}
+
 // get recipe instructions
 // @param recipeId - the Spoonacular recipe ID
 export async function getRecipeInstructions(
@@ -359,7 +377,7 @@ export function getRecipeImageUrl(
   filename: string,
   size: '90x90' | '240x150' | '312x231' | '480x360' | '556x370' | '636x393' = '312x231'
 ): string {
-  return `https://spoonacular.com/recipeImages/${filename}`;
+  return `https://spoonacular.com/recipeImages/${filename.replace(/-\d+x\d+\./, `-${size}.`)}`;
 }
 
 // Get the full image URL for an ingredient
@@ -374,6 +392,7 @@ export function getIngredientImageUrl(
 }
 
 export default {
+  autocompleteRecipes,
   searchRecipes,
   getRecipeInformation,
   getRandomRecipes,

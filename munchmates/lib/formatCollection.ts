@@ -26,6 +26,7 @@ export function formatCollection(c: CollectionWithRelations) {
         recipes: c.recipes.map((r) => ({
             recipeId: r.recipeId,
             recipeName: r.recipeName,
+            recipeImage: r.recipeImage ?? null,
             addedBy: r.addedBy,
             addedByName: r.addedByName,
             addedAt: r.addedAt.toISOString(),

@@ -10,6 +10,7 @@ export interface MealPlanEntry {
   image?: string;
   servings: number;         // User's desired servings
   originalServings: number; // Recipe's default servings (from Spoonacular)
+  readyInMinutes?: number;
 }
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner';

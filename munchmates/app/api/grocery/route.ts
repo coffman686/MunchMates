@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
+            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
+            create: { id: p.sub, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
         const items = await prisma.groceryItem.findMany({
@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
+            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
+            create: { id: p.sub, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
         // Create or update item (upsert on name to prevent duplicates)
@@ -72,10 +72,9 @@ export async function POST(req: NextRequest) {
                 userId_name: { userId: p.sub, name },
             },
             update: {
-                // If item exists, update quantity (append if both have values)
                 quantity: quantity,
                 category,
-                fromMealPlan: fromMealPlan || undefined,
+                fromMealPlan: body.fromMealPlan !== undefined ? fromMealPlan : undefined,
             },
             create: {
                 userId: p.sub,

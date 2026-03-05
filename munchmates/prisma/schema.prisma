@@ -12,6 +12,8 @@ datasource db {
 // Keycloak user reference — created on first interaction with any API route
 model User {
   id        String   @id // Keycloak sub claim
+  name      String   @default("")
+  username  String   @default("")
   createdAt DateTime @default(now())
 
   profile               UserProfile?
@@ -62,6 +64,7 @@ model CustomRecipe {
   ingredients    String[]
   instructions   String
   image          String?
+  summary        String?
   createdAt      DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -101,6 +104,7 @@ model CollectionRecipe {
   collectionId String
   recipeId     Int
   recipeName   String
+  recipeImage  String?
   addedBy      String
   addedByName  String
   addedAt      DateTime @default(now())
@@ -135,6 +139,7 @@ model MealEntry {
   image            String?
   servings         Int
   originalServings Int
+  readyInMinutes   Int?
 
   mealPlan WeeklyMealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
 

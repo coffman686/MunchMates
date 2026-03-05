@@ -1,27 +1,18 @@
-// app/(app)/profile/page.tsx serves as the user's "profile" page.
-// Right now all data is stored locally for user's information aside from what
-// is kept on the Keycloak server. That information is pulled using a route,
-// and the dietary info/allergies are stored locally until we have the money to
-// implement a larger database for the operational site
 "use client";
 
-// import all necessary libraries and components
-import { useEffect, useState } from "react";
+import { useEffect, useState, Dispatch, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { DietaryDialog } from "@/components/ingredients/Dietary";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/layout/app-sidebar";
-import AppHeader from "@/components/layout/app-header";
 import {
     initKeycloak,
     ensureToken,
     getAccessTokenClaims,
     logout,
 } from "@/lib/keycloak";
-import {LogOut} from "lucide-react";
+import { LogOut, User, ShieldAlert, Trash2, Save, Leaf, AlertTriangle, Globe } from "lucide-react";
 
-// define the shape of access token claims we care about
 type AccessTokenClaims = {
     sub?: string;
     email?: string;
@@ -29,323 +20,290 @@ type AccessTokenClaims = {
     name?: string;
 };
 
-// main ProfilePage component
-// handles displaying and editing user profile information
+const allDiets = [
+    "Gluten Free", "Ketogenic", "Vegetarian", "Lacto-Vegetarian",
+    "Ovo-Vegetarian", "Vegan", "Pescetarian", "Paleo", "Primal",
+    "Low FODMAP", "Whole30",
+];
+
+const allIntolerances = [
+    "Dairy", "Egg", "Gluten", "Grain", "Peanut", "Seafood",
+    "Sesame", "Shellfish", "Soy", "Sulfite", "Tree Nut", "Wheat",
+];
+
+const allCuisines = [
+    "African", "Asian", "American", "British", "Cajun", "Caribbean",
+    "Chinese", "Eastern European", "European", "French", "German",
+    "Greek", "Indian", "Irish", "Italian", "Japanese", "Jewish",
+    "Korean", "Latin American", "Mediterranean", "Mexican",
+    "Middle Eastern", "Nordic", "Southern", "Spanish", "Thai", "Vietnamese",
+];
+
+function toggleItem(item: string, setItems: Dispatch<SetStateAction<string[]>>) {
+    setItems(prev =>
+        prev.includes(item) ? prev.filter(s => s !== item) : [...prev, item]
+    );
+}
+
+function ChipGrid({ items, selected, onToggle }: {
+    items: string[];
+    selected: string[];
+    onToggle: (item: string) => void;
+}) {
+    return (
+        <div className="flex flex-wrap gap-2">
+            {items.map(item => {
+                const active = selected.includes(item);
+                return (
+                    <button
+                        key={item}
+                        type="button"
+                        onClick={() => onToggle(item)}
+                        className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                            active
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted/60 text-foreground/70 hover:bg-muted"
+                        }`}
+                    >
+                        {item}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 const ProfilePage = () => {
     const router = useRouter();
 
-    // gate to avoid calling APIs before Keycloak is ready
     const [authReady, setAuthReady] = useState(false);
-
-    // display-only from Keycloak
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
-
-    // app-owned profile data
-    const [favoriteCuisines, setFavoriteCuisines] = useState("");
+    const [favoriteCuisines, setFavoriteCuisines] = useState<string[]>([]);
     const [diets, setDiets] = useState<string[]>([]);
     const [intolerances, setIntolerances] = useState<string[]>([]);
-
-    const [dietModal, setDietModal] = useState(false);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
-    const openDiet = () => setDietModal(true);
-    const closeDiet = () => setDietModal(false);
+    // Load diets/intolerances from localStorage on mount
+    useEffect(() => {
+        const localDiets = localStorage.getItem("diets");
+        if (localDiets) setDiets(JSON.parse(localDiets));
+        const localIntolerances = localStorage.getItem("intolerances");
+        if (localIntolerances) setIntolerances(JSON.parse(localIntolerances));
+    }, []);
 
-    // 1) Initialize Keycloak for this route and pull name/email
     useEffect(() => {
         let mounted = true;
-
         (async () => {
             try {
                 const authed = await initKeycloak("login-required");
                 if (!mounted || !authed) return;
-
                 setAuthReady(true);
-
-                // once authenticated, we can safely read token claims
                 const claims = getAccessTokenClaims<AccessTokenClaims>();
                 if (claims) {
-                    setName(
-                        claims.name ??
-                        claims.preferred_username ??
-                        claims.sub ??
-                        ""
-                    );
+                    setName(claims.name ?? claims.preferred_username ?? claims.sub ?? "");
                     setEmail(claims.email ?? "");
                 }
             } catch (err) {
                 console.error("Error initializing Keycloak on profile page", err);
             }
         })();
-
-        return () => {
-            mounted = false;
-        };
+        return () => { mounted = false; };
     }, []);
 
-    // 2) After auth is ready, load profile from /api/profile
     useEffect(() => {
         if (!authReady) return;
-
         const loadProfile = async () => {
             try {
                 const token = await ensureToken();
-                if (!token) {
-                    // not authenticated for some reason; don't spam 401s
-                    return;
-                }
-
+                if (!token) return;
                 const res = await fetch("/api/profile", {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
+                    headers: { Authorization: `Bearer ${token}` },
                 });
-
-                if (!res.ok) {
-                    console.error("Failed to load profile", res.status);
-                    return;
-                }
-
+                if (!res.ok) return;
                 const data = await res.json();
-                setFavoriteCuisines(data.favoriteCuisines ?? "");
-                setDiets(data.diets ?? []);
-                setIntolerances(data.intolerances ?? []);
+                if (data.favoriteCuisines) {
+                    const parsed = typeof data.favoriteCuisines === "string"
+                        ? data.favoriteCuisines.split(",").map((s: string) => s.trim()).filter(Boolean)
+                        : data.favoriteCuisines;
+                    setFavoriteCuisines(parsed);
+                }
+                if (data.diets) setDiets(data.diets);
+                if (data.intolerances) setIntolerances(data.intolerances);
             } catch (err) {
                 console.error("Error loading profile", err);
             }
         };
-
         loadProfile();
     }, [authReady]);
 
-    // 3) Save profile back to /api/profile
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setSaving(true);
-
         try {
-            const token = await ensureToken();
-            const headers: Record<string, string> = {
-                "Content-Type": "application/json",
-            };
-            if (token) {
-                headers.Authorization = `Bearer ${token}`;
-            }
+            // Sync to localStorage for other components that read from there
+            localStorage.setItem("diets", JSON.stringify(diets));
+            localStorage.setItem("intolerances", JSON.stringify(intolerances));
 
+            const token = await ensureToken();
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (token) headers.Authorization = `Bearer ${token}`;
             const res = await fetch("/api/profile", {
                 method: "POST",
                 headers,
                 body: JSON.stringify({
-                    favoriteCuisines,
+                    favoriteCuisines: favoriteCuisines.join(", "),
                     diets,
                     intolerances,
                 }),
             });
-
-            if (!res.ok) {
-                console.error("Failed to save profile", res.status);
-                setSaving(false);
-                return;
-            }
-
-            router.push("/dashboard");
+            if (!res.ok) { setSaving(false); return; }
+            setSaving(false);
         } catch (err) {
             console.error("Error saving profile", err);
             setSaving(false);
         }
     };
 
-    // prepare display text for diets and intolerances
-    const dietText =
-        diets.length > 0 ? diets.join(", ") : "No dietary preferences selected";
-    const intoleranceText =
-        intolerances.length > 0
-            ? intolerances.join(", ")
-            : "No allergies listed";
-
     const handleDeleteAccount = async () => {
         const confirmed = window.confirm(
             "Are you sure you want to delete your account? This action cannot be undone."
         );
         if (!confirmed) return;
-
         try {
             setDeleting(true);
-
             const token = await ensureToken();
             const headers: Record<string, string> = {};
-            if (token) {
-                headers.Authorization = `Bearer ${token}`;
-            }
-
-            const res = await fetch("/api/account", {
-                method: "DELETE",
-                headers,
-            });
-
-            if (!res.ok) {
-                console.error("Failed to delete account", res.status);
-                setDeleting(false);
-                return;
-            }
-
-            // Log out from Keycloak and send the user back to your entrypoint.
+            if (token) headers.Authorization = `Bearer ${token}`;
+            const res = await fetch("/api/account", { method: "DELETE", headers });
+            if (!res.ok) { setDeleting(false); return; }
             await logout(window.location.origin);
-            // If logout's redirect doesn't fire for some reason, fall back:
-            // router.push("/");
         } catch (err) {
             console.error("Error deleting account", err);
             setDeleting(false);
         }
     };
 
+    const card = "rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)]";
+
     return (
-        <SidebarProvider>
+        <SidebarProvider defaultOpen={false}>
             <div className="min-h-screen flex w-full">
                 <AppSidebar />
                 <div className="flex-1 flex flex-col">
-                    <AppHeader title="Profile" />
-                    <main className="flex-1 flex items-start justify-center px-4 py-16 bg-muted/20">
-                        <DietaryDialog
-                            isOpen={dietModal}
-                            closePopup={closeDiet}
-                            diets={diets}
-                            setDiets={setDiets}
-                            intolerances={intolerances}
-                            setIntolerances={setIntolerances}
-                        />
+                    <main className="flex-1 p-4 sm:p-6 bg-muted/20">
+                        <div className="w-full max-w-2xl mx-auto space-y-5">
+                            <form onSubmit={handleSubmit} className="space-y-5">
 
-                        <div className="w-full max-w-xl rounded-2xl bg-card border border-border shadow-sm px-8 py-10">
-                <h2 className="text-3xl font-semibold text-center mb-8 text-foreground">
-                    My Profile
-                </h2>
-
-                            <form className="space-y-6" onSubmit={handleSubmit}>
-                                {/* Name (from Keycloak) */}
-                                <div className="space-y-2">
-                                    <label
-                                        htmlFor="name"
-                                        className="block text-sm font-medium text-foreground"
-                                    >
-                                        Name
-                                    </label>
-                                    <input
-                                        id="name"
-                                        type="text"
-                                        value={name}
-                                        readOnly
-                                        className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
-                                    />
-                                </div>
-
-                                {/* Email (from Keycloak) */}
-                                <div className="space-y-2">
-                                    <label
-                                        htmlFor="email"
-                                        className="block text-sm font-medium text-foreground"
-                                    >
-                                        Email
-                                    </label>
-                                    <input
-                                        id="email"
-                                        type="email"
-                                        value={email}
-                                        readOnly
-                                        className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
-                                    />
+                                {/* Account */}
+                                <div className={card}>
+                                    <div className="flex items-center gap-2 px-5 pt-4 pb-3">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(10,132,255,0.1)" }}>
+                                            <User className="h-4 w-4" style={{ color: "#0A84FF" }} />
+                                        </div>
+                                        <h2 className="text-[15px] font-semibold">Account</h2>
+                                    </div>
+                                    <div className="px-5 pb-4 divide-y divide-border/30">
+                                        <div className="flex items-center justify-between py-3">
+                                            <span className="text-[13px] text-muted-foreground">Name</span>
+                                            <span className="text-[13px] font-medium">{name || "—"}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between py-3">
+                                            <span className="text-[13px] text-muted-foreground">Email</span>
+                                            <span className="text-[13px] font-medium">{email || "—"}</span>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Favorite Cuisines */}
-                                <div className="space-y-2">
-                                    <p className="block text-sm font-medium text-foreground">
-                                        Favorite Cuisines
-                                    </p>
-                                    <input
-                                        type="text"
-                                        placeholder="e.g., Italian, Mexican"
-                                        value={favoriteCuisines}
-                                        onChange={(e) => setFavoriteCuisines(e.target.value)}
-                                        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                                    />
-                                </div>
-
-                                {/* Dietary preferences */}
-                                <div className="space-y-2">
-                                    <p className="block text-sm font-medium text-foreground">
-                                        Dietary preferences
-                                    </p>
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="text"
-                                            readOnly
-                                            value={dietText}
-                                            className="flex-1 rounded-lg border border-input bg-muted px-3 py-2 text-sm text-muted-foreground shadow-inner"
+                                <div className={card}>
+                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(48,209,88,0.1)" }}>
+                                            <Globe className="h-4 w-4" style={{ color: "#30D158" }} />
+                                        </div>
+                                        <h2 className="text-[15px] font-semibold">Favorite Cuisines</h2>
+                                    </div>
+                                    <div className="px-5 pb-4 pt-2">
+                                        <ChipGrid
+                                            items={allCuisines}
+                                            selected={favoriteCuisines}
+                                            onToggle={(c) => toggleItem(c, setFavoriteCuisines)}
                                         />
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="shrink-0"
-                                            onClick={openDiet}
-                                        >
-                                            Edit
-                                        </Button>
                                     </div>
                                 </div>
 
-                                {/* Allergies */}
-                                <div className="space-y-2">
-                                    <p className="block text-sm font-medium text-foreground">
-                                        Allergies
-                                    </p>
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="text"
-                                            readOnly
-                                            value={intoleranceText}
-                                            className="flex-1 rounded-lg border border-input bg-muted px-3 py-2 text-sm text-muted-foreground shadow-inner"
+                                {/* Dietary Preferences */}
+                                <div className={card}>
+                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(255,159,10,0.1)" }}>
+                                            <Leaf className="h-4 w-4" style={{ color: "#FF9F0A" }} />
+                                        </div>
+                                        <h2 className="text-[15px] font-semibold">Dietary Preferences</h2>
+                                    </div>
+                                    <div className="px-5 pb-4 pt-2">
+                                        <ChipGrid
+                                            items={allDiets}
+                                            selected={diets}
+                                            onToggle={(d) => toggleItem(d, setDiets)}
                                         />
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="shrink-0"
-                                            onClick={openDiet}
-                                        >
-                                            Edit
-                                        </Button>
                                     </div>
                                 </div>
-                                <div className="pt-4">
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => logout()}
-                                        className="w-full"
-                                    >
-                                        <LogOut className="h-4 w-4"/>
-                                        Sign Out
-                                    </Button>
+
+                                {/* Allergies / Intolerances */}
+                                <div className={card}>
+                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(255,69,58,0.1)" }}>
+                                            <AlertTriangle className="h-4 w-4" style={{ color: "#FF453A" }} />
+                                        </div>
+                                        <h2 className="text-[15px] font-semibold">Allergies &amp; Intolerances</h2>
+                                    </div>
+                                    <div className="px-5 pb-4 pt-2">
+                                        <ChipGrid
+                                            items={allIntolerances}
+                                            selected={intolerances}
+                                            onToggle={(i) => toggleItem(i, setIntolerances)}
+                                        />
+                                    </div>
                                 </div>
-                                {/* Save Settings */}
-                                <div className="pt-4">
-                                    <Button type="submit" className="w-full" disabled={saving}>
-                                        {saving ? "Saving..." : "Save Settings"}
-                                    </Button>
+
+                                {/* Save */}
+                                <Button type="submit" className="w-full h-11 rounded-xl text-[14px] font-semibold" disabled={saving}>
+                                    <Save className="h-4 w-4 mr-2" />
+                                    {saving ? "Saving..." : "Save Changes"}
+                                </Button>
+
+                                {/* Account Actions */}
+                                <div className={card}>
+                                    <div className="flex items-center gap-2 px-5 pt-4 pb-3">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(94,92,230,0.1)" }}>
+                                            <ShieldAlert className="h-4 w-4" style={{ color: "#5E5CE6" }} />
+                                        </div>
+                                        <h2 className="text-[15px] font-semibold">Account Actions</h2>
+                                    </div>
+                                    <div className="px-5 pb-4 divide-y divide-border/30">
+                                        <button
+                                            type="button"
+                                            onClick={() => logout()}
+                                            className="flex items-center gap-3 w-full py-3"
+                                        >
+                                            <LogOut className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-[13px] font-medium">Sign Out</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteAccount}
+                                            disabled={deleting}
+                                            className="flex items-center gap-3 w-full py-3"
+                                        >
+                                            <Trash2 className="h-4 w-4 text-red-500" />
+                                            <span className="text-[13px] font-medium text-red-500">
+                                                {deleting ? "Removing account..." : "Delete Account"}
+                                            </span>
+                                        </button>
+                                    </div>
                                 </div>
-                                {/* Delete Account */}
-                                <div className="pt-4">
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        className="w-full"
-                                        disabled={saving || deleting}
-                                        onClick={handleDeleteAccount}
-                                    >
-                                        {deleting
-                                            ? "Removing account..."
-                                            : "Delete Account"}
-                                    </Button>
-                                </div>
+
                             </form>
                         </div>
                     </main>

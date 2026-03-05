@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
+            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
+            create: { id: p.sub, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
         let categories = await prisma.groceryCategory.findMany({
