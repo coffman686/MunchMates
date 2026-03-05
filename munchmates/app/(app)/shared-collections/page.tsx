@@ -183,7 +183,7 @@ const SharedCollectionsPage = () => {
         }
     };
 
-    const myIdRef = useRef<string | undefined>();
+    const myIdRef = useRef<string | undefined>(undefined);
     if (!myIdRef.current) {
         myIdRef.current = getAccessTokenClaims<{ sub?: string }>()?.sub;
     }
