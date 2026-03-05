@@ -462,7 +462,7 @@ export default function Dashboard() {
                                     {mealSlots.map(({ key, label, icon: Icon, color, bg }) => {
                                         const meal = hasMeals ? todayPlan?.[key] : undefined;
                                         const content = (
-                                            <div className={`flex items-center gap-3.5 px-4 py-3.5 rounded-xl ${meal ? 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05] cursor-pointer' : 'opacity-45'} transition-colors`}>
+                                            <div className={`flex items-center gap-3.5 px-4 py-3.5 rounded-xl ${meal ? 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05] cursor-pointer' : ''} transition-colors`}>
                                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: bg }}>
                                                     <Icon className="h-[18px] w-[18px]" style={{ color }} />
                                                 </div>
@@ -471,7 +471,7 @@ export default function Dashboard() {
                                                     {meal ? (
                                                         <p className="font-semibold text-[14px] truncate leading-snug mt-0.5">{meal.title}</p>
                                                     ) : (
-                                                        <p className="text-[14px] text-muted-foreground/50 mt-0.5">Not planned</p>
+                                                        <p className="text-[14px] text-muted-foreground/70 mt-0.5">Not planned</p>
                                                     )}
                                                 </div>
                                                 {meal && <ArrowRight className="h-4 w-4 text-muted-foreground/30 shrink-0" />}
