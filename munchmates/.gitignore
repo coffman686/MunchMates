@@ -10,10 +10,12 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing (local only — not for public branch yet)
+# testing
 /coverage
-/tests
-vitest.config.ts
+
+# uploaded images (local only)
+/public/uploads/recipes/*
+!/public/uploads/recipes/.gitkeep
 
 # next.js
 /.next/

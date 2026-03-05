@@ -60,18 +60,17 @@ export async function POST(req: NextRequest, context: RouteContext) {
             );
         }
 
-        // Ensure the new member's User record exists
-        await prisma.user.upsert({
-            where: { id: memberId },
-            update: {},
-            create: { id: memberId },
-        });
+        // Validate that the user exists in the database
+        const targetUser = await prisma.user.findUnique({ where: { id: memberId } });
+        if (!targetUser) {
+            return errorResponse(400, "User not found. They must have an account first.");
+        }
 
         await prisma.collectionMember.create({
             data: {
                 collectionId,
                 userId: memberId,
-                userName: memberName,
+                userName: targetUser.name || targetUser.username || memberName,
                 role,
             },
         });

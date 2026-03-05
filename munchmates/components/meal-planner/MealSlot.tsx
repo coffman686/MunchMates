@@ -1,16 +1,8 @@
-// MealSlot.tsx
-// Container for recipe elements on meal plan view
-// - Holds a draggable recipe or empty slot
-// - Allows user to add a new recipe to the list
-// - Existing recipes can be dropped into an empty slot
-// - Currently holds 3 time slots for meals
-
 'use client';
 
 import { useDroppable } from '@dnd-kit/core';
 import { MealPlanEntry, MealType } from '@/lib/types/meal-plan';
 import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import DraggableRecipeCard from './DraggableRecipeCard';
 
 interface MealSlotProps {
@@ -37,23 +29,16 @@ export default function MealSlot({
     data: { dayDate, mealType },
   });
 
-  const mealLabels: Record<MealType, string> = {
-    breakfast: 'Breakfast',
-    lunch: 'Lunch',
-    dinner: 'Dinner',
-  };
-
   return (
-    <div className="flex-1 flex flex-col min-w-[160px]">
-      <h4 className="font-medium text-xs mb-1 text-muted-foreground text-center sm:hidden">
-        {mealLabels[mealType]}
-      </h4>
+    <div className="flex-1 flex flex-col min-w-0">
       <div
         ref={setNodeRef}
-        className={`flex-1 border-2 border-dashed rounded-lg p-3 transition-colors ${
+        className={`flex-1 rounded-xl p-1 transition-all ${
           isOver
-            ? 'border-primary bg-primary/10'
-            : 'border-muted-foreground/20 hover:border-muted-foreground/40'
+            ? 'bg-primary/10 ring-2 ring-primary/30 scale-[1.02]'
+            : entry
+              ? ''
+              : 'border-2 border-dashed border-border/40 hover:border-border/60 hover:bg-muted/20'
         }`}
       >
         {entry ? (
@@ -63,17 +48,15 @@ export default function MealSlot({
             onUpdateServings={onUpdateServings}
           />
         ) : (
-          <div className="h-full min-h-[160px] flex items-center justify-center bg-muted/30 rounded-md">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex flex-col items-center gap-1 text-xs h-auto py-3"
-              onClick={onAddRecipe}
-            >
-              <Plus className="h-6 w-6" />
-              <span>Add Recipe</span>
-            </Button>
-          </div>
+          <button
+            onClick={onAddRecipe}
+            className="w-full min-h-[52px] flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors group"
+          >
+            <div className="flex items-center gap-1.5 text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">
+              <Plus className="h-4 w-4" />
+              <span className="text-xs font-medium hidden sm:inline">Add</span>
+            </div>
+          </button>
         )}
       </div>
     </div>

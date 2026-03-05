@@ -1,6 +1,6 @@
 // file: ingredient-aggregator.ts
 // Aggregates ingredients from weekly meal plans together cohesively
-// - Fetches recipe ingredient infromation via spoonacular API
+// - Fetches recipe ingredient information via spoonacular API
 // - Standardizes ingredient units across the same items
 // - Pools together items by type and category
 // - Produces human readable final output with reasonable units
@@ -24,6 +24,59 @@ interface ExtendedIngredient {
 interface RecipeInfo {
   title: string;
   extendedIngredients: ExtendedIngredient[];
+}
+
+// --- Ingredient filtering constants ---
+
+// Solution 1: Common staples most people always have at home
+const EXCLUDED_STAPLES: Set<string> = new Set([
+  'salt',
+  'pepper',
+  'black pepper',
+  'water',
+  'ice',
+  'cooking spray',
+  'nonstick cooking spray',
+  'non-stick cooking spray',
+]);
+
+// Solution 2: Map variant names to canonical names for deduplication
+const INGREDIENT_ALIASES: Record<string, string> = {
+  'sea salt': 'salt',
+  'kosher salt': 'salt',
+  'table salt': 'salt',
+  'coarse salt': 'salt',
+  'fine salt': 'salt',
+  'flaky salt': 'salt',
+  'pinch salt': 'salt',
+  'salt or': 'salt',
+  'freshly cracked pepper': 'black pepper',
+  'ground pepper': 'black pepper',
+  'freshly ground pepper': 'black pepper',
+  'cracked pepper': 'black pepper',
+  'freshly ground black pepper': 'black pepper',
+  'ground black pepper': 'black pepper',
+};
+
+// Compound entries where both components are staples — skip entirely
+const EXCLUDED_COMPOUNDS: Set<string> = new Set([
+  'salt and pepper',
+  'salt & pepper',
+  'salt and pepper to taste',
+  'salt & pepper to taste',
+]);
+
+// Solution 4: Patterns indicating non-quantified / trivial ingredients
+const TO_TASTE_PATTERNS: RegExp[] = [
+  /\bto taste\b/i,
+  /\bas needed\b/i,
+  /\bfor garnish\b/i,
+  /\bfor serving\b/i,
+];
+
+function isToTaste(originalString: string): boolean {
+  if (!originalString) return false;
+  return TO_TASTE_PATTERNS.some((pattern) => pattern.test(originalString));
 }
 
 // Fetch recipe information via API route (client-safe)
@@ -217,20 +270,29 @@ export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<Ag
   }
 
   // Fetch full recipe information for each recipe via API route
+  // Batch in groups of 4 to stay under Spoonacular's 5 req/sec limit
   const uniqueRecipeIds = [...new Set(recipeEntries.map((e) => e.recipeId))];
   const recipeInfoMap = new Map<number, { ingredients: ExtendedIngredient[]; title: string }>();
 
-  await Promise.all(
-    uniqueRecipeIds.map(async (recipeId) => {
-      const info = await fetchRecipeInfo(recipeId);
-      if (info) {
-        recipeInfoMap.set(recipeId, {
-          ingredients: info.extendedIngredients || [],
-          title: info.title,
-        });
-      }
-    })
-  );
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < uniqueRecipeIds.length; i += BATCH_SIZE) {
+    const batch = uniqueRecipeIds.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (recipeId) => {
+        const info = await fetchRecipeInfo(recipeId);
+        if (info) {
+          recipeInfoMap.set(recipeId, {
+            ingredients: info.extendedIngredients || [],
+            title: info.title,
+          });
+        }
+      })
+    );
+    // Small delay between batches to avoid rate limiting
+    if (i + BATCH_SIZE < uniqueRecipeIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 
   // Aggregate ingredients
   const aggregated = new Map<string, {
@@ -252,7 +314,22 @@ export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<Ag
     const servingMultiplier = desiredServings / originalServings;
 
     for (const ingredient of recipeInfo.ingredients) {
-      const key = ingredient.name.toLowerCase().trim();
+      let key = ingredient.name.toLowerCase().trim();
+
+      // Solution 2: Skip compound staple entries (e.g. "salt and pepper")
+      if (EXCLUDED_COMPOUNDS.has(key)) continue;
+
+      // Solution 2: Resolve variant names to canonical names
+      if (INGREDIENT_ALIASES[key]) {
+        key = INGREDIENT_ALIASES[key];
+      }
+
+      // Solution 1: Skip common staples
+      if (EXCLUDED_STAPLES.has(key)) continue;
+
+      // Solution 4: Skip "to taste" / non-quantified ingredients
+      if (isToTaste(ingredient.originalString)) continue;
+
       const adjustedAmount = (ingredient.amount || 0) * servingMultiplier;
       const unit = ingredient.unit || '';
       const unitType = getUnitType(unit);
@@ -260,7 +337,9 @@ export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<Ag
 
       if (!aggregated.has(key)) {
         aggregated.set(key, {
-          name: ingredient.name,
+          name: INGREDIENT_ALIASES[ingredient.name.toLowerCase().trim()]
+            ? key  // Use canonical name when alias was applied
+            : ingredient.name,
           amounts: [],
           category,
           sourceRecipes: new Set(),

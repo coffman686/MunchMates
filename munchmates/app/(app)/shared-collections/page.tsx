@@ -6,15 +6,14 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import AppHeader from '@/components/layout/app-header';
+import { useState, useEffect, useRef } from 'react';
+import { getAccessTokenClaims } from '@/lib/keycloak';
 import RequireAuth from '@/components/RequireAuth';
 import { authedFetch } from '@/lib/authedFetch';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/layout/app-sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
     Dialog,
@@ -29,16 +28,13 @@ import {
     FolderHeart,
     Plus,
     Users,
-    ChefHat,
     BookOpen,
     Trash2,
-    Settings,
-    UserPlus,
     Crown,
     Eye,
     Edit
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 
 // Represent user in a shared collection
@@ -53,6 +49,7 @@ type CollectionMember = {
 type SharedRecipe = {
     recipeId: number;
     recipeName: string;
+    recipeImage?: string | null;
     addedBy: string;
     addedByName: string;
     addedAt: string;
@@ -70,8 +67,26 @@ type SharedCollection = {
     recipes: SharedRecipe[];
 };
 
+const collectionGradients = [
+    'linear-gradient(135deg, #FF6B6B, #FF8E53)',
+    'linear-gradient(135deg, #667eea, #764ba2)',
+    'linear-gradient(135deg, #f093fb, #f5576c)',
+    'linear-gradient(135deg, #4facfe, #00f2fe)',
+    'linear-gradient(135deg, #43e97b, #38f9d7)',
+    'linear-gradient(135deg, #fa709a, #fee140)',
+    'linear-gradient(135deg, #a18cd1, #fbc2eb)',
+    'linear-gradient(135deg, #fccb90, #d57eeb)',
+];
+
+function getGradient(name: string): string {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return collectionGradients[Math.abs(hash) % collectionGradients.length];
+}
+
 const SharedCollectionsPage = () => {
-    const router = useRouter();
     const [collections, setCollections] = useState<SharedCollection[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -133,7 +148,9 @@ const SharedCollectionsPage = () => {
     };
 
     // Delete a collection with confirmation dialog
-    const handleDeleteCollection = async (collectionId: string) => {
+    const handleDeleteCollection = async (e: React.MouseEvent, collectionId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (!confirm('Are you sure you want to delete this collection? This action cannot be undone.')) {
             return;
         }
@@ -155,201 +172,204 @@ const SharedCollectionsPage = () => {
         }
     };
 
-    // Format the date with user locale
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
-    };
-
-    // Get corresponding role color for user type
-    const getRoleIcon = (role: string) => {
+    const getRoleLabel = (role: string) => {
         switch (role) {
             case 'owner':
-                return <Crown className="h-3 w-3 text-yellow-500" />;
+                return { icon: <Crown className="h-3 w-3" />, label: 'Owner' };
             case 'editor':
-                return <Edit className="h-3 w-3 text-blue-500" />;
+                return { icon: <Edit className="h-3 w-3" />, label: 'Editor' };
             default:
-                return <Eye className="h-3 w-3 text-gray-500" />;
+                return { icon: <Eye className="h-3 w-3" />, label: 'Viewer' };
         }
     };
 
+    const myIdRef = useRef<string | undefined>();
+    if (!myIdRef.current) {
+        myIdRef.current = getAccessTokenClaims<{ sub?: string }>()?.sub;
+    }
+
     const getUserRole = (collection: SharedCollection): string => {
-        // This would need to be compared with current user ID
-        // For now, we'll check if user is the creator
-        return collection.members[0]?.role || 'viewer';
+        const me = collection.members.find(m => m.userId === myIdRef.current);
+        return me?.role || 'viewer';
     };
 
     return (
         <RequireAuth>
-            <SidebarProvider>
+            <SidebarProvider defaultOpen={false}>
                 <div className="min-h-screen flex w-full">
                     <AppSidebar />
                     <div className="flex-1 flex flex-col">
-                        <AppHeader title="Shared Collections" />
-                        <main className="flex-1 p-6">
-                            <div className="max-w-6xl mx-auto">
-                                {/* Header */}
-                                <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                    <div>
-                                        <h1 className="text-3xl font-bold flex items-center gap-3">
-                                            <FolderHeart className="h-8 w-8 text-primary" />
-                                            Shared Collections
-                                        </h1>
-                                        <p className="text-muted-foreground mt-2">
-                                            Create and manage recipe collections with friends and family
-                                        </p>
+                        <main className="flex-1 p-6 bg-muted/20">
+                            <div className="w-full space-y-5">
+                                {/* Header row */}
+                                <div className="flex items-center justify-between mb-3">
+                                    <h2 className="text-xl font-bold tracking-tight">Shared Collections</h2>
+                                    <div className="flex items-center gap-2">
+                                        {!isLoading && collections.length > 0 && (
+                                            <Badge variant="secondary" className="rounded-full text-xs">
+                                                {collections.length}
+                                            </Badge>
+                                        )}
+                                        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button size="sm" className="rounded-full gap-1.5">
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                    New Collection
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="rounded-2xl">
+                                                <DialogHeader>
+                                                    <DialogTitle>Create New Collection</DialogTitle>
+                                                    <DialogDescription>
+                                                        Create a shared collection to organize recipes with others.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+                                                <div className="space-y-4 py-4">
+                                                    <div className="space-y-2">
+                                                        <label htmlFor="name" className="text-sm font-medium">
+                                                            Collection Name *
+                                                        </label>
+                                                        <Input
+                                                            id="name"
+                                                            className="rounded-xl"
+                                                            placeholder="e.g., Family Favorites, Holiday Recipes"
+                                                            value={newCollectionName}
+                                                            onChange={(e) => setNewCollectionName(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label htmlFor="description" className="text-sm font-medium">
+                                                            Description
+                                                        </label>
+                                                        <Input
+                                                            id="description"
+                                                            className="rounded-xl"
+                                                            placeholder="What is this collection about?"
+                                                            value={newCollectionDescription}
+                                                            onChange={(e) => setNewCollectionDescription(e.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <DialogFooter>
+                                                    <Button
+                                                        variant="outline"
+                                                        className="rounded-full"
+                                                        onClick={() => setIsCreateDialogOpen(false)}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                    <Button
+                                                        className="rounded-full"
+                                                        onClick={handleCreateCollection}
+                                                        disabled={!newCollectionName.trim() || isCreating}
+                                                    >
+                                                        {isCreating ? 'Creating...' : 'Create Collection'}
+                                                    </Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
                                     </div>
-                                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button className="flex items-center gap-2">
-                                                <Plus className="h-4 w-4" />
-                                                New Collection
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle>Create New Collection</DialogTitle>
-                                                <DialogDescription>
-                                                    Create a shared collection to organize recipes with others.
-                                                </DialogDescription>
-                                            </DialogHeader>
-                                            <div className="space-y-4 py-4">
-                                                <div className="space-y-2">
-                                                    <label htmlFor="name" className="text-sm font-medium">
-                                                        Collection Name *
-                                                    </label>
-                                                    <Input
-                                                        id="name"
-                                                        placeholder="e.g., Family Favorites, Holiday Recipes"
-                                                        value={newCollectionName}
-                                                        onChange={(e) => setNewCollectionName(e.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label htmlFor="description" className="text-sm font-medium">
-                                                        Description
-                                                    </label>
-                                                    <Input
-                                                        id="description"
-                                                        placeholder="What is this collection about?"
-                                                        value={newCollectionDescription}
-                                                        onChange={(e) => setNewCollectionDescription(e.target.value)}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <DialogFooter>
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={() => setIsCreateDialogOpen(false)}
-                                                >
-                                                    Cancel
-                                                </Button>
-                                                <Button
-                                                    onClick={handleCreateCollection}
-                                                    disabled={!newCollectionName.trim() || isCreating}
-                                                >
-                                                    {isCreating ? 'Creating...' : 'Create Collection'}
-                                                </Button>
-                                            </DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
                                 </div>
 
                                 {/* Content */}
                                 {isLoading ? (
-                                    <div className="flex items-center justify-center py-12">
-                                        <ChefHat className="h-12 w-12 text-muted-foreground animate-spin" />
+                                    /* Loading skeleton */
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {Array.from({ length: 6 }).map((_, i) => (
+                                            <div key={i} className="aspect-[4/3] rounded-2xl bg-muted animate-pulse" />
+                                        ))}
                                     </div>
                                 ) : collections.length === 0 ? (
-                                    <Card className="text-center py-12">
-                                        <CardContent>
-                                            <FolderHeart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                                            <h3 className="text-xl font-semibold mb-2">No shared collections yet</h3>
-                                            <p className="text-muted-foreground mb-6">
-                                                Create your first collection to start sharing recipes with others!
-                                            </p>
-                                            <Button onClick={() => setIsCreateDialogOpen(true)}>
-                                                <Plus className="h-4 w-4 mr-2" />
-                                                Create Your First Collection
-                                            </Button>
-                                        </CardContent>
-                                    </Card>
+                                    /* Empty state */
+                                    <div
+                                        className="rounded-2xl py-16 flex flex-col items-center text-center"
+                                        style={{ background: 'linear-gradient(135deg, hsl(14 80% 52% / 0.10) 0%, hsl(30 90% 55% / 0.08) 50%, hsl(350 70% 60% / 0.05) 100%)' }}
+                                    >
+                                        <FolderHeart className="h-10 w-10 text-primary/40 mb-4" />
+                                        <h3 className="text-lg font-semibold mb-1">Start sharing recipes</h3>
+                                        <p className="text-sm text-muted-foreground max-w-xs mb-6">
+                                            Create a collection to organize and share your favorite recipes with friends and family.
+                                        </p>
+                                        <Button className="rounded-full" onClick={() => setIsCreateDialogOpen(true)}>
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Create Your First Collection
+                                        </Button>
+                                    </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {collections.map((collection) => (
-                                            <Card key={collection.id} className="flex flex-col hover:shadow-lg transition-shadow">
-                                                <CardHeader>
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="flex-1">
-                                                            <CardTitle className="line-clamp-1 flex items-center gap-2">
-                                                                <FolderHeart className="h-5 w-5 text-primary" />
-                                                                {collection.name}
-                                                            </CardTitle>
-                                                            {collection.description && (
-                                                                <CardDescription className="mt-1 line-clamp-2">
-                                                                    {collection.description}
-                                                                </CardDescription>
-                                                            )}
-                                                        </div>
-                                                        {getUserRole(collection) === 'owner' && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                onClick={() => handleDeleteCollection(collection.id)}
-                                                                className="text-red-500 hover:text-red-600 hover:bg-red-50 -mt-2 -mr-2"
+                                    /* Collection grid */
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {collections.map((collection) => {
+                                            const role = getUserRole(collection);
+                                            const { icon, label } = getRoleLabel(role);
+                                            const images = collection.recipes
+                                                .map(r => r.recipeImage)
+                                                .filter((img): img is string => !!img)
+                                                .slice(0, 4);
+                                            return (
+                                                <Link
+                                                    key={collection.id}
+                                                    href={`/shared-collections/${collection.id}`}
+                                                    className="group relative rounded-2xl overflow-hidden bg-card border shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all duration-300 ease-out hover:shadow-lg hover:scale-[1.01]"
+                                                >
+                                                    {/* Gradient accent strip */}
+                                                    <div className="h-2 w-full" style={{ background: getGradient(collection.name) }} />
+
+                                                    {/* Thumbnail grid */}
+                                                    <div className="p-3 pb-0">
+                                                        {images.length > 0 ? (
+                                                            <div className={`grid gap-1.5 rounded-xl overflow-hidden ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                                                {images.map((img, i) => (
+                                                                    <div key={i} className="relative aspect-[3/2] bg-muted">
+                                                                        <Image
+                                                                            src={img.replace(/-\d+x\d+\./, '-312x231.')}
+                                                                            alt=""
+                                                                            fill
+                                                                            className="object-cover"
+                                                                        />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div
+                                                                className="flex items-center justify-center rounded-xl aspect-[3/2]"
+                                                                style={{ background: getGradient(collection.name), opacity: 0.15 }}
                                                             >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
+                                                                <FolderHeart className="h-8 w-8 text-muted-foreground/40" />
+                                                            </div>
                                                         )}
                                                     </div>
-                                                </CardHeader>
-                                                <CardContent className="flex-1">
-                                                    <div className="space-y-3">
-                                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                            <BookOpen className="h-4 w-4" />
-                                                            <span>{collection.recipes.length} recipes</span>
+
+                                                    {/* Info */}
+                                                    <div className="p-3 pt-2.5">
+                                                        <p className="text-sm font-semibold line-clamp-1">{collection.name}</p>
+                                                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                                            <span className="flex items-center gap-1">
+                                                                <BookOpen className="h-3 w-3" />
+                                                                {collection.recipes.length} recipes
+                                                            </span>
+                                                            <span className="flex items-center gap-1">
+                                                                <Users className="h-3 w-3" />
+                                                                {collection.members.length} members
+                                                            </span>
                                                         </div>
-                                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                            <Users className="h-4 w-4" />
-                                                            <span>{collection.members.length} members</span>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-1 mt-2">
-                                                            {collection.members.slice(0, 3).map((member) => (
-                                                                <Badge
-                                                                    key={member.userId}
-                                                                    variant="secondary"
-                                                                    className="flex items-center gap-1"
+                                                        <div className="flex items-center justify-between mt-2">
+                                                            <Badge variant="secondary" className="rounded-full text-[10px] px-2 py-0 flex items-center gap-1">
+                                                                {icon}
+                                                                {label}
+                                                            </Badge>
+                                                            {role === 'owner' && (
+                                                                <button
+                                                                    onClick={(e) => handleDeleteCollection(e, collection.id)}
+                                                                    className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-all"
                                                                 >
-                                                                    {getRoleIcon(member.role)}
-                                                                    <span className="truncate max-w-[80px]">
-                                                                        {member.userName}
-                                                                    </span>
-                                                                </Badge>
-                                                            ))}
-                                                            {collection.members.length > 3 && (
-                                                                <Badge variant="outline">
-                                                                    +{collection.members.length - 3} more
-                                                                </Badge>
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </button>
                                                             )}
                                                         </div>
                                                     </div>
-                                                </CardContent>
-                                                <CardFooter className="border-t pt-4">
-                                                    <div className="w-full flex gap-2">
-                                                        <Button
-                                                            variant="default"
-                                                            className="flex-1"
-                                                            onClick={() => router.push(`/shared-collections/${collection.id}`)}
-                                                        >
-                                                            View Collection
-                                                        </Button>
-                                                    </div>
-                                                </CardFooter>
-                                            </Card>
-                                        ))}
+                                                </Link>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

@@ -11,19 +11,11 @@
   font-style: normal;
   font-display: swap;
 }
+
 /* Only the Regular file is present in /public/font. To avoid 404s, map missing
    weights/styles to the available Regular file as a safe fallback until you
-   add the proper Bold/Italic font files (or better: WOFF2/WOFF variants). */
-
-@font-face {
-  font-family: 'Momo Trust Display';
-  src: url('/font/MomoTrustDisplay-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Fallback declarations that reuse the Regular file when Bold/Italic files are
+   add the proper Bold/Italic font files (or better: WOFF2/WOFF variants).
+   Fallback declarations that reuse the Regular file when Bold/Italic files are
    missing. Replace or remove these when you add true Bold/Italic fonts. */
 @font-face {
   font-family: 'Momo Trust Display';
@@ -59,35 +51,35 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Source Code Pro", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
 
   /* Light theme - HSL for better theming control */
-  --background: 25 56% 95%;
+  --background: 25 40% 96%;
   --foreground: 230 18% 15%;
-  --card: 25 56% 95%;
+  --card: 0 0% 100%;
   --card-foreground: 230 18% 15%;
-  --popover: 25 56% 95%;
+  --popover: 0 0% 100%;
   --popover-foreground: 230 18% 15%;
-  --primary: 14 70% 62%;
-  --primary-foreground: 25 56% 98%;
-  --secondary: 14 30% 88%;
+  --primary: 14 70% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 25 30% 92%;
   --secondary-foreground: 14 70% 30%;
-  --muted: 14 30% 92%;
+  --muted: 25 20% 93%;
   --muted-foreground: 230 10% 40%;
   --accent: 230 18% 30%;
-  --accent-foreground: 25 56% 98%;
+  --accent-foreground: 0 0% 100%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 98%;
-  --border: 14 30% 80%;
-  --input: 14 30% 85%;
-  --ring: 14 70% 62%;
+  --border: 25 20% 88%;
+  --input: 25 20% 90%;
+  --ring: 14 70% 55%;
 
   /* Sidebar - Light theme */
-  --sidebar: 25 50% 97%;
+  --sidebar: 0 0% 100%;
   --sidebar-foreground: 230 18% 25%;
-  --sidebar-primary: 14 70% 62%;
-  --sidebar-primary-foreground: 25 56% 98%;
-  --sidebar-accent: 14 30% 90%;
+  --sidebar-primary: 14 70% 55%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 25 25% 95%;
   --sidebar-accent-foreground: 14 70% 40%;
-  --sidebar-border: 14 30% 85%;
-  --sidebar-ring: 14 70% 62%;
+  --sidebar-border: 25 20% 90%;
+  --sidebar-ring: 14 70% 55%;
 
   /* Chart colors */
   --chart-1: 14 70% 62%;
@@ -99,35 +91,35 @@
 
 /* Dark theme */
 .dark {
-  --background: 230 18% 10%;
-  --foreground: 25 56% 95%;
-  --card: 230 18% 10%;
-  --card-foreground: 25 56% 95%;
-  --popover: 230 18% 10%;
-  --popover-foreground: 25 56% 95%;
-  --primary: 14 70% 62%;
-  --primary-foreground: 25 56% 98%;
-  --secondary: 14 30% 30%;
+  --background: 230 18% 8%;
+  --foreground: 25 30% 95%;
+  --card: 230 18% 12%;
+  --card-foreground: 25 30% 95%;
+  --popover: 230 18% 12%;
+  --popover-foreground: 25 30% 95%;
+  --primary: 14 70% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 14 30% 25%;
   --secondary-foreground: 14 70% 80%;
-  --muted: 230 18% 20%;
+  --muted: 230 18% 18%;
   --muted-foreground: 230 10% 60%;
-  --accent: 14 30% 50%;
-  --accent-foreground: 25 56% 98%;
+  --accent: 14 30% 45%;
+  --accent-foreground: 0 0% 100%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 98%;
-  --border: 230 18% 25%;
-  --input: 230 18% 20%;
-  --ring: 14 70% 62%;
+  --border: 230 15% 20%;
+  --input: 230 18% 18%;
+  --ring: 14 70% 60%;
 
   /* Sidebar - Dark theme */
-  --sidebar: 230 18% 15%;
-  --sidebar-foreground: 25 56% 90%;
-  --sidebar-primary: 14 70% 62%;
-  --sidebar-primary-foreground: 25 56% 98%;
-  --sidebar-accent: 230 18% 25%;
+  --sidebar: 230 18% 10%;
+  --sidebar-foreground: 25 30% 90%;
+  --sidebar-primary: 14 70% 60%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 230 18% 20%;
   --sidebar-accent-foreground: 14 70% 80%;
-  --sidebar-border: 230 18% 20%;
-  --sidebar-ring: 14 70% 62%;
+  --sidebar-border: 230 15% 18%;
+  --sidebar-ring: 14 70% 60%;
 
   /* Chart colors - Dark theme */
   --chart-1: 14 70% 62%;

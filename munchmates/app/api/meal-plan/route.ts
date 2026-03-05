@@ -28,6 +28,7 @@ function buildWeeklyPlan(
     image: string | null;
     servings: number;
     originalServings: number;
+    readyInMinutes: number | null;
   }[],
   days: DayPlan[]
 ): WeeklyMealPlan {
@@ -42,6 +43,7 @@ function buildWeeklyPlan(
       image: meal.image ?? undefined,
       servings: meal.servings,
       originalServings: meal.originalServings,
+      readyInMinutes: meal.readyInMinutes ?? undefined,
     });
   }
 
@@ -112,8 +114,8 @@ export async function POST(req: NextRequest) {
     // Ensure User record exists
     await prisma.user.upsert({
       where: { id: userId },
-      update: {},
-      create: { id: userId },
+      update: { name: payload.name ?? "", username: payload.preferred_username ?? "" },
+      create: { id: userId, name: payload.name ?? "", username: payload.preferred_username ?? "" },
     });
 
     // Collect all meal entries from the plan
@@ -126,6 +128,7 @@ export async function POST(req: NextRequest) {
       image: string | null;
       servings: number;
       originalServings: number;
+      readyInMinutes: number | null;
     }[] = [];
 
     for (const day of plan.days) {
@@ -141,6 +144,7 @@ export async function POST(req: NextRequest) {
             image: entry.image ?? null,
             servings: entry.servings,
             originalServings: entry.originalServings,
+            readyInMinutes: entry.readyInMinutes ?? null,
           });
         }
       }

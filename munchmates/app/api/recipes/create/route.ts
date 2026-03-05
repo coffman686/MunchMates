@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         const userId = p.sub;
 
         const body = await req.json();
-        const { title, servings, readyInMinutes, dishTypes, cuisines, ingredients, instructions } = body;
+        const { title, servings, readyInMinutes, dishTypes, cuisines, ingredients, instructions, image, summary } = body;
 
         // Validate required fields
         if (!title || typeof title !== 'string' || !title.trim()) {
@@ -37,22 +37,24 @@ export async function POST(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: userId },
-            update: {},
-            create: { id: userId },
+            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
+            create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
-        const newRecipe = await prisma.customRecipe.create({
-            data: {
-                userId,
-                title: title.trim(),
-                servings: servings || 1,
-                readyInMinutes: readyInMinutes || 30,
-                dishTypes: dishTypes || ['main course'],
-                cuisines: cuisines || ['American'],
-                ingredients,
-                instructions: instructions.trim(),
-            },
-        });
+        const data = {
+            userId,
+            title: title.trim(),
+            servings: Number(servings) || 1,
+            readyInMinutes: Number(readyInMinutes) || 30,
+            dishTypes: dishTypes || ['main course'],
+            cuisines: cuisines || ['American'],
+            ingredients,
+            instructions: instructions.trim(),
+            ...(image ? { image } : {}),
+            ...(summary ? { summary } : {}),
+        };
+
+        const newRecipe = await prisma.customRecipe.create({ data });
 
         // Match original response shape
         const recipe = {
@@ -85,13 +87,14 @@ export async function POST(req: NextRequest) {
 
 // Helper: map a DB CustomRecipe row to the RecipeInfo shape the UI expects
 // Converts the flat ingredients string array into the extendedIngredients format
-// used by both RecipeDetailPage and RecipeDetails (slideover) components.
+// used by the RecipeDetailPage component.
 // Custom recipes store ingredients as plain strings (e.g. "2 cups flour"),
 // so amount/unit are left at defaults and the full string goes in name + original.
 function mapToRecipeInfo(r: {
     id: number;
     title: string;
     image: string | null;
+    summary: string | null;
     readyInMinutes: number;
     servings: number;
     cuisines: string[];
@@ -103,6 +106,7 @@ function mapToRecipeInfo(r: {
         id: r.id,
         title: r.title,
         image: r.image ?? undefined,
+        summary: r.summary ?? undefined,
         readyInMinutes: r.readyInMinutes,
         servings: r.servings,
         cuisines: r.cuisines,
@@ -122,7 +126,7 @@ function mapToRecipeInfo(r: {
 // Supports two modes:
 //   ?id=<recipeId> → returns a single recipe mapped to RecipeInfo (no auth required)
 //   (no params)    → returns all recipes for the authenticated user (auth required)
-// Single-recipe mode is used by the detail page and slideover when recipeId >= 100000
+// Single-recipe mode is used by the detail page when recipeId >= 100000
 export async function GET(req: NextRequest) {
     try {
         const singleId = req.nextUrl.searchParams.get("id");
