@@ -71,7 +71,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         }
 
         const body = await req.json();
-        const { action, name, description, recipeId, recipeName, recipeImage } = body;
+        const { action, name, description, recipeId, recipeName } = body;
 
         switch (action) {
             case 'update': {
@@ -98,6 +98,9 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                 }
 
                 const numericRecipeId = Number(recipeId);
+                if (!Number.isFinite(numericRecipeId)) {
+                    return errorResponse(400, "recipeId must be a valid number");
+                }
 
                 // Check if recipe already exists in collection
                 const existingRecipe = collection.recipes.find(r => r.recipeId === numericRecipeId);
@@ -113,7 +116,6 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                         collectionId,
                         recipeId: numericRecipeId,
                         recipeName: String(recipeName),
-                        recipeImage: recipeImage ? String(recipeImage) : null,
                         addedBy: userId,
                         addedByName: userName,
                     },

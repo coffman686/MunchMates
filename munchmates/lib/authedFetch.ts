@@ -10,7 +10,11 @@ import { ensureToken, waitForInit, keycloak } from '@/lib/keycloak';
 
 export async function authedFetch(input: RequestInfo, init: RequestInit = {}) {
     const headers = new Headers(init.headers || {});
-    headers.set('Content-Type', 'application/json');
+    const hasBody = init.body !== undefined && init.body !== null;
+    const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+    if (hasBody && !isFormData && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+    }
 
     // Wait for Keycloak init to fully settle (never triggers init itself)
     await waitForInit();

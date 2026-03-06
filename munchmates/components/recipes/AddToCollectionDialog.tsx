@@ -48,7 +48,7 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
     const [collections, setCollections] = useState<Collection[]>(cachedCollections ?? []);
     const [selectedId, setSelectedId] = useState('');
     const [isAdding, setIsAdding] = useState(false);
-    const [loaded, setLoaded] = useState(cachedCollections !== null);
+    const [isLoadingCollections, setIsLoadingCollections] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     // Reset status when dialog opens/closes or selection changes
@@ -57,24 +57,47 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
     }, [isOpen]);
 
     useEffect(() => {
-        if (!isOpen || loaded) return;
+        if (!isOpen) return;
+
+        if (cachedCollections !== null) {
+            setCollections(cachedCollections);
+            return;
+        }
+
+        let cancelled = false;
         const load = async () => {
+            setIsLoadingCollections(true);
             try {
                 const res = await authedFetch('/api/shared-collections');
                 if (res.ok) {
                     const data = await res.json();
                     const list = data.collections || [];
-                    cachedCollections = list;
-                    setCollections(list);
+                    if (!cancelled) {
+                        setCollections(list);
+                    }
+
+                    // Cache only non-empty results so we can re-check if user creates their first collection.
+                    cachedCollections = list.length > 0 ? list : null;
+                } else if (!cancelled) {
+                    setStatus({ type: 'error', message: 'Unable to load collections. Please try again.' });
                 }
             } catch (err) {
                 console.error('Error loading collections:', err);
+                if (!cancelled) {
+                    setStatus({ type: 'error', message: 'Unable to load collections. Please try again.' });
+                }
             } finally {
-                setLoaded(true);
+                if (!cancelled) {
+                    setIsLoadingCollections(false);
+                }
             }
         };
         load();
-    }, [isOpen, loaded]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen]);
 
     const handleAdd = async () => {
         if (!recipe || !selectedId) return;
@@ -135,7 +158,11 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
                         </div>
                     )}
 
-                    {collections.length === 0 ? (
+                    {isLoadingCollections ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                            Loading collections...
+                        </p>
+                    ) : collections.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">
                             No collections yet. Create one from the Shared Collections page.
                         </p>
