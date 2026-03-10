@@ -411,7 +411,92 @@ export default function RecipeDetailPage() {
     recipe.extendedIngredients && recipe.extendedIngredients.length > 0;
 
   return (
-    <div className="min-h-full bg-background">
+    <>
+      {/* Print-only section */}
+      <div className="hidden print:block print:p-0 print:m-0 print:min-h-0 print:min-w-0 print:overflow-visible">
+        <h1 className="print:text-2xl print:font-bold print:mb-2">{recipe.title}</h1>
+        <div className="flex items-center gap-4 mb-4 text-sm">
+          {recipe.spoonacularScore != null && recipe.spoonacularScore > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+              <span className="font-semibold">{Math.round(recipe.spoonacularScore)}</span>
+              <span className="text-muted-foreground">score</span>
+            </div>
+          )}
+          {recipe.readyInMinutes != null && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-primary" />
+              <span className="font-semibold">{recipe.readyInMinutes}</span>
+              <span className="text-muted-foreground">min</span>
+            </div>
+          )}
+          {recipe.servings != null && (
+            <div className="flex items-center gap-1.5">
+              <Users className="h-4 w-4 text-primary" />
+              <span className="font-semibold">{recipe.servings}</span>
+              <span className="text-muted-foreground">servings</span>
+            </div>
+          )}
+        </div>
+        {(dietLabels.length > 0 || hasCuisineOrDish) && (
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {dietLabels.map((label) => (
+              <span
+                key={label}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getDietBadgeClass(label)}`}
+              >
+                {label}
+              </span>
+            ))}
+            {recipe.cuisines?.map((cuisine) => (
+              <span
+                key={cuisine}
+                className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-background/60 text-muted-foreground"
+              >
+                {cuisine}
+              </span>
+            ))}
+            {recipe.dishTypes?.map((type) => (
+              <span
+                key={type}
+                className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border bg-background/60 text-muted-foreground"
+              >
+                {type}
+              </span>
+             ))}
+          </div>
+        )}
+        {recipe.summary && (
+          <div className="print:mb-4">
+            <p className="print:text-base print:mb-4">{stripHtml(recipe.summary)}</p>
+          </div>
+        )}
+        {hasIngredients && (
+          <div className="print:mb-6">
+            <h2 className="print:text-xl print:font-semibold print:mb-2">Ingredients</h2>
+            <ul className="print:list-disc print:pl-6 print:text-base">
+              {recipe.extendedIngredients?.map(ingredient => (
+                <li key={ingredient.id}>{ingredient.original}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {hasAnyInstructions && (
+          <div className="print:mb-6">
+            <h2 className="print:text-xl print:font-semibold print:mb-2">Instructions</h2>
+            {hasStructuredInstructions ? (
+              <ol className="print:list-decimal print:pl-6 print:text-base">
+                {instructions.map(step => (
+                  <li key={step.number}>{step.step}</li>
+                ))}
+              </ol>
+            ) : (
+              <p className="print:text-base print:whitespace-pre-line">{stripHtml(recipe.instructions!)}</p>
+            )}
+          </div>
+        )}
+      </div>
+    <div className="min-h-full bg-background print:hidden">
       {/* Header Section */}
       <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-8">
         {/* Back button */}
@@ -623,5 +708,6 @@ export default function RecipeDetailPage() {
 
       <AddToCollectionDialog isOpen={collectionDialog.isOpen} onOpenChange={collectionDialog.setIsOpen} recipe={collectionDialog.recipe} />
     </div>
+    </>
   );
 }

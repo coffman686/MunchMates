@@ -282,4 +282,22 @@
       scroll-behavior: auto !important;
     }
   }
+  /* Print styles */
+  @media print {
+  html, body, #__next {
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    }
+  }
+  @media print {
+    .main-layout {
+      min-height: 0 !important;
+      padding: 0 !important;
+    }
+  }
+  .main-layout {
+  min-height: 80vh;
+  padding: 1rem;
+}
 }
