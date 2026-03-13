@@ -732,6 +732,7 @@ const MealPlanner = () => {
           currentDayDate={selectedSlot?.dayDate || ''}
           availableDays={getAvailableDays()}
         />
+
       </SidebarProvider>
     </RequireAuth>
   );
