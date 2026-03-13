@@ -26,6 +26,13 @@ export async function POST(req: NextRequest) {
 
         const deductions: DeductionInput[] = body.deductions;
 
+        // Validate each deduction has proper types
+        for (const d of deductions) {
+            if (typeof d.pantryItemId !== 'number' || typeof d.amount !== 'number' || isNaN(d.amount)) {
+                return errorResponse(400, "Each deduction must have numeric pantryItemId and amount");
+            }
+        }
+
         if (deductions.length === 0) {
             return NextResponse.json({ ok: true, results: [] });
         }
@@ -111,8 +118,12 @@ export async function POST(req: NextRequest) {
                             const remainingBase = currentBase.amount - deductBase.amount;
                             // Convert back to the original pantry unit instead of
                             // letting convertFromBase pick a different unit
-                            const originalFactor = currentBase.amount / currentAmount;
-                            remainingAmount = remainingBase / originalFactor;
+                            if (currentAmount === 0) {
+                                remainingAmount = -deduction.amount;
+                            } else {
+                                const originalFactor = currentBase.amount / currentAmount;
+                                remainingAmount = remainingBase / originalFactor;
+                            }
                             // Keep remainingUnit = currentUnit (already set above)
                         } else {
                             remainingAmount = currentAmount - deduction.amount;

@@ -1,6 +1,18 @@
 // Pantry Page
 // Implements the MunchMates pantry management experience with database persistence
 // and support for expiry-awareness and image-based item entry.
+//
+// Features:
+// - Auth-gated page wrapped in RequireAuth + SidebarProvider + AppSidebar/AppHeader
+//   so it fits the main application shell.
+// - Database persistence via /api/pantry — data syncs across devices
+// - Add Item form:
+//   - Name, quantity, category (via <Select>), optional expiry date
+//   - "Add via image" opens ImageClassificationDialog and pre-fills the item name
+//   - Enter key support to quickly add items from the keyboard.
+// - Inline edit support per item:
+//   - Click the pencil icon to edit name, quantity, category, and expiry date
+//   - Save/Cancel actions, with Enter/Escape keyboard handling.
 
 'use client';
 
@@ -215,6 +227,11 @@ const Pantry = () => {
         setIsSaving(true);
         try {
             const amount = editAmount ? parseFloat(editAmount) : null;
+            if (amount !== null && isNaN(amount)) {
+                setApiError({ message: 'Amount must be a number', isValidation: true });
+                setIsSaving(false);
+                return;
+            }
             const res = await authedFetch('/api/pantry', {
                 method: 'PUT',
                 body: JSON.stringify({
@@ -680,12 +697,12 @@ const Pantry = () => {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-0 flex-wrap">
                             <span className="text-[14px] font-semibold leading-tight truncate">{item.name}</span>
-                            {displayQuantity(item) && (
+                            {(() => { const qty = displayQuantity(item); return qty ? (
                                 <>
                                     <span className="mx-1.5 text-muted-foreground/30">·</span>
-                                    <span className="text-[12px] text-foreground/60">{displayQuantity(item)}</span>
+                                    <span className="text-[12px] text-foreground/60">{qty}</span>
                                 </>
-                            )}
+                            ) : null; })()}
                         </div>
                         <div className="flex items-center gap-0 flex-wrap text-[11px] text-muted-foreground mt-0.5">
                             <span>Added {new Date(item.addedAt + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
