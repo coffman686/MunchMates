@@ -1,18 +1,6 @@
 // Pantry Page
 // Implements the MunchMates pantry management experience with database persistence
 // and support for expiry-awareness and image-based item entry.
-//
-// Features:
-// - Auth-gated page wrapped in RequireAuth + SidebarProvider + AppSidebar/AppHeader
-//   so it fits the main application shell.
-// - Database persistence via /api/pantry — data syncs across devices
-// - Add Item form:
-//   - Name, quantity, category (via <Select>), optional expiry date
-//   - "Add via image" opens ImageClassificationDialog and pre-fills the item name
-//   - Enter key support to quickly add items from the keyboard.
-// - Inline edit support per item:
-//   - Click the pencil icon to edit name, quantity, category, and expiry date
-//   - Save/Cancel actions, with Enter/Escape keyboard handling.
 
 'use client';
 
@@ -28,6 +16,7 @@ import ImageClassificationDialog from '@/components/image-classification-dialog'
 import { authedFetch } from '@/lib/authedFetch';
 import ApiErrorBanner from '@/components/ui/api-error-banner';
 import { assertOk, getErrorMessage, isValidationError } from '@/lib/apiClient';
+import { formatAmount } from '@/lib/unit-conversion';
 import {
     Select,
     SelectTrigger,
@@ -40,6 +29,8 @@ interface PantryItem {
     id: number;
     name: string;
     quantity: string;
+    amount: number | null;
+    unit: string;
     category: string;
     expiryDate?: string | null;
     addedAt: string;
@@ -64,6 +55,8 @@ const categories = [
     'Frozen',
     'Other'
 ];
+
+const COMMON_UNITS = ['', 'cups', 'tbsp', 'tsp', 'oz', 'lbs', 'g', 'kg', 'ml', 'L', 'pieces'];
 
 const categoryEmoji: Record<string, string> = {
     'Grains & Flour': '🌾',
@@ -137,6 +130,14 @@ const categoryColor: Record<string, string> = {
     'Other': 'bg-gray-50 dark:bg-gray-950/30',
 };
 
+function displayQuantity(item: PantryItem): string {
+    if (item.amount !== null && item.amount !== undefined) {
+        const formatted = formatAmount(item.amount);
+        return item.unit ? `${formatted} ${item.unit}` : formatted;
+    }
+    return item.quantity || '';
+}
+
 const Pantry = () => {
     const [items, setItems] = useState<PantryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -144,7 +145,8 @@ const Pantry = () => {
     const [apiError, setApiError] = useState<{ message: string; isValidation: boolean; onRetry?: RetryAction } | null>(null);
 
     const [itemName, setItemName] = useState('');
-    const [itemQuantity, setItemQuantity] = useState('');
+    const [itemAmount, setItemAmount] = useState('');
+    const [itemUnit, setItemUnit] = useState('');
     const [itemCategory, setItemCategory] = useState(categories[0]);
     const [expiryDate, setExpiryDate] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
@@ -152,7 +154,8 @@ const Pantry = () => {
 
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editName, setEditName] = useState('');
-    const [editQuantity, setEditQuantity] = useState('');
+    const [editAmount, setEditAmount] = useState('');
+    const [editUnit, setEditUnit] = useState('');
     const [editCategory, setEditCategory] = useState(categories[0]);
     const [editExpiry, setEditExpiry] = useState('');
 
@@ -192,7 +195,8 @@ const Pantry = () => {
     const beginEdit = (item: PantryItem) => {
         setEditingId(item.id);
         setEditName(item.name);
-        setEditQuantity(item.quantity);
+        setEditAmount(item.amount !== null && item.amount !== undefined ? String(item.amount) : '');
+        setEditUnit(item.unit || '');
         setEditCategory(item.category);
         setEditExpiry(item.expiryDate ?? '');
     };
@@ -200,7 +204,8 @@ const Pantry = () => {
     const cancelEdit = () => {
         setEditingId(null);
         setEditName('');
-        setEditQuantity('');
+        setEditAmount('');
+        setEditUnit('');
         setEditCategory(categories[0]);
         setEditExpiry('');
     };
@@ -209,12 +214,14 @@ const Pantry = () => {
         clearError();
         setIsSaving(true);
         try {
+            const amount = editAmount ? parseFloat(editAmount) : null;
             const res = await authedFetch('/api/pantry', {
                 method: 'PUT',
                 body: JSON.stringify({
                     id,
                     name: editName.trim(),
-                    quantity: editQuantity.trim(),
+                    amount,
+                    unit: editUnit,
                     category: editCategory,
                     expiryDate: editExpiry.trim() || null,
                 }),
@@ -223,7 +230,7 @@ const Pantry = () => {
             await assertOk(res, 'Failed to update pantry item');
             const data = await res.json();
             setItems(prev =>
-                prev.map(it => it.id === id ? data.item : it)
+                prev.map(it => it.id === id ? { ...data.item, category: normalizeCategory(data.item.category) } : it)
             );
             cancelEdit();
         } catch (error) {
@@ -239,9 +246,9 @@ const Pantry = () => {
     };
 
     const addItem = async () => {
-        if (itemName.trim() === '' || itemQuantity.trim() === '') {
+        if (itemName.trim() === '' || !itemAmount) {
             setApiError({
-                message: 'Name and quantity are required',
+                message: 'Name and amount are required',
                 isValidation: true,
             });
             return;
@@ -250,11 +257,19 @@ const Pantry = () => {
         clearError();
         setIsSaving(true);
         try {
+            const amount = parseFloat(itemAmount);
+            if (isNaN(amount)) {
+                setApiError({ message: 'Amount must be a number', isValidation: true });
+                setIsSaving(false);
+                return;
+            }
+
             const res = await authedFetch('/api/pantry', {
                 method: 'POST',
                 body: JSON.stringify({
                     name: itemName.trim(),
-                    quantity: itemQuantity.trim(),
+                    amount,
+                    unit: itemUnit,
                     category: itemCategory,
                     expiryDate: expiryDate || null,
                 }),
@@ -266,13 +281,14 @@ const Pantry = () => {
                 const existingIndex = prev.findIndex(i => i.id === data.item.id);
                 if (existingIndex >= 0) {
                     const updated = [...prev];
-                    updated[existingIndex] = data.item;
+                    updated[existingIndex] = { ...data.item, category: normalizeCategory(data.item.category) };
                     return updated;
                 }
-                return [data.item, ...prev];
+                return [{ ...data.item, category: normalizeCategory(data.item.category) }, ...prev];
             });
             setItemName('');
-            setItemQuantity('');
+            setItemAmount('');
+            setItemUnit('');
             setExpiryDate('');
             setItemCategory(categories[0]);
         } catch (error) {
@@ -433,12 +449,25 @@ const Pantry = () => {
                                             />
                                         </div>
                                         <Input
-                                            placeholder="Qty"
-                                            value={itemQuantity}
-                                            onChange={(e) => setItemQuantity(e.target.value)}
+                                            type="number"
+                                            placeholder="Quantity"
+                                            value={itemAmount}
+                                            onChange={(e) => setItemAmount(e.target.value)}
                                             onKeyDown={handleKeyPress}
-                                            className="w-24 h-10 rounded-xl text-sm"
+                                            className="w-28 h-10 rounded-xl text-sm"
+                                            min={0}
+                                            step="any"
                                         />
+                                        <Select value={itemUnit || '__none'} onValueChange={(v) => setItemUnit(v === '__none' ? '' : v)}>
+                                            <SelectTrigger className="w-[110px] h-10 rounded-xl text-sm">
+                                                <SelectValue placeholder="Unit" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {COMMON_UNITS.map(u => (
+                                                    <SelectItem key={u || '__none'} value={u || '__none'}>{u || 'No unit'}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <Select value={itemCategory} onValueChange={setItemCategory}>
                                             <SelectTrigger className="w-[150px] h-10 rounded-xl text-sm">
                                                 <SelectValue placeholder="Category" />
@@ -567,13 +596,11 @@ const Pantry = () => {
     function renderItem(item: PantryItem) {
         const expiryStatus = getExpiryStatus(item.expiryDate);
         const isEditing = editingId === item.id;
-        const emoji = categoryEmoji[item.category] || '📦';
-        const bgColor = categoryColor[item.category] || 'bg-gray-50 dark:bg-gray-950/30';
 
         if (isEditing) {
             return (
                 <div key={item.id} className="col-span-full rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                         <Input
                             autoFocus
                             placeholder="Name"
@@ -583,12 +610,28 @@ const Pantry = () => {
                             className="h-8 rounded-lg text-sm"
                         />
                         <Input
-                            placeholder="Quantity"
-                            value={editQuantity}
-                            onChange={(e) => setEditQuantity(e.target.value)}
+                            type="number"
+                            placeholder="Amount"
+                            value={editAmount}
+                            onChange={(e) => setEditAmount(e.target.value)}
                             onKeyDown={(e) => handleEditKey(e, item.id)}
                             className="h-8 rounded-lg text-sm"
+                            min={0}
+                            step="any"
                         />
+                        <Select value={editUnit || '__none'} onValueChange={(v) => setEditUnit(v === '__none' ? '' : v)}>
+                            <SelectTrigger
+                                className="h-8 rounded-lg text-sm bg-background"
+                                onKeyDown={(e) => handleEditKey(e, item.id)}
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {COMMON_UNITS.map(u => (
+                                    <SelectItem key={u || '__none'} value={u || '__none'}>{u || 'No unit'}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Select value={editCategory} onValueChange={setEditCategory}>
                             <SelectTrigger
                                 className="h-8 rounded-lg text-sm bg-background"
@@ -637,10 +680,10 @@ const Pantry = () => {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-0 flex-wrap">
                             <span className="text-[14px] font-semibold leading-tight truncate">{item.name}</span>
-                            {item.quantity && (
+                            {displayQuantity(item) && (
                                 <>
                                     <span className="mx-1.5 text-muted-foreground/30">·</span>
-                                    <span className="text-[12px] text-foreground/60">{item.quantity}</span>
+                                    <span className="text-[12px] text-foreground/60">{displayQuantity(item)}</span>
                                 </>
                             )}
                         </div>

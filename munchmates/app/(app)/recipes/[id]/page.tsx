@@ -26,8 +26,13 @@ import {
   Utensils,
   Check,
   FolderHeart,
+  ChefHat,
+  Minus,
+  Plus,
 } from "lucide-react";
 import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
+import CookConfirmModal, { useCookModal } from '@/components/cook/CookConfirmModal';
+import { formatAmount } from '@/lib/unit-conversion';
 
 type RecipeInfo = {
   id: number;
@@ -234,6 +239,8 @@ export default function RecipeDetailPage() {
   );
 
   const collectionDialog = useAddToCollection();
+  const cookModal = useCookModal();
+  const [displayServings, setDisplayServings] = useState<number>(1);
 
   useEffect(() => {
     const fetchRecipeData = async () => {
@@ -252,6 +259,7 @@ export default function RecipeDetailPage() {
             authedFetch("/api/recipes/saved"),
           ]);
           setRecipe(data.recipe);
+          setDisplayServings(data.recipe.servings || 1);
 
           // Parse numbered instructions into structured steps
           if (data.recipe.instructions) {
@@ -283,6 +291,7 @@ export default function RecipeDetailPage() {
           if (infoRes.ok) {
             infoData = await infoRes.json();
             setRecipe(infoData);
+            setDisplayServings(infoData.servings || 1);
           } else {
             setError("Failed to load recipe information");
           }
@@ -514,25 +523,34 @@ export default function RecipeDetailPage() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
                 {recipe.title}
               </h1>
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleSaveRecipe}
+                    className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-background/80 transition-colors"
+                  >
+                    <Heart
+                      className={`h-5 w-5 ${
+                        isSaved
+                          ? "fill-red-500 text-red-500"
+                          : "text-muted-foreground"
+                      }`}
+                    />
+                  </button>
+                  <button
+                    onClick={() => recipe && collectionDialog.openDialog({ id: recipe.id, title: recipe.title, image: recipe.image })}
+                    className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-background/80 transition-colors"
+                    title="Add to collection"
+                  >
+                    <FolderHeart className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                </div>
                 <button
-                  onClick={handleSaveRecipe}
-                  className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-background/80 transition-colors"
+                  onClick={() => recipe && cookModal.openModal(recipe, displayServings)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
                 >
-                  <Heart
-                    className={`h-5 w-5 ${
-                      isSaved
-                        ? "fill-red-500 text-red-500"
-                        : "text-muted-foreground"
-                    }`}
-                  />
-                </button>
-                <button
-                  onClick={() => recipe && collectionDialog.openDialog({ id: recipe.id, title: recipe.title, image: recipe.image })}
-                  className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-background/80 transition-colors"
-                  title="Add to collection"
-                >
-                  <FolderHeart className="h-5 w-5 text-muted-foreground" />
+                  <ChefHat className="h-3.5 w-3.5" />
+                  I Cooked This
                 </button>
               </div>
             </div>
@@ -556,7 +574,22 @@ export default function RecipeDetailPage() {
               {recipe.servings != null && (
                 <div className="flex items-center gap-1.5">
                   <Users className="h-4 w-4 text-primary" />
-                  <span className="font-semibold">{recipe.servings}</span>
+                  <button
+                    className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    onClick={() => setDisplayServings(Math.max(1, displayServings - 1))}
+                    disabled={displayServings <= 1}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className={`font-semibold tabular-nums ${displayServings !== recipe.servings ? 'text-primary' : ''}`}>
+                    {displayServings}
+                  </span>
+                  <button
+                    className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    onClick={() => setDisplayServings(displayServings + 1)}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
                   <span className="text-muted-foreground">servings</span>
                 </div>
               )}
@@ -591,6 +624,7 @@ export default function RecipeDetailPage() {
                 ))}
               </div>
             )}
+
           </div>
 
           {/* Right — Image */}
@@ -668,6 +702,11 @@ export default function RecipeDetailPage() {
                 <div className="space-y-1">
                   {recipe.extendedIngredients!.map((ingredient, index) => {
                     const checked = checkedIngredients.has(index);
+                    const scale = recipe.servings ? displayServings / recipe.servings : 1;
+                    const scaledAmount = ingredient.amount * scale;
+                    const displayText = ingredient.amount > 0
+                      ? `${formatAmount(scaledAmount)} ${ingredient.unit} ${ingredient.name}`.trim()
+                      : ingredient.original;
                     return (
                       <button
                         key={`${ingredient.id}-${index}`}
@@ -694,7 +733,7 @@ export default function RecipeDetailPage() {
                               : "text-foreground"
                           }`}
                         >
-                          {ingredient.original}
+                          {displayText}
                         </span>
                       </button>
                     );
@@ -707,6 +746,12 @@ export default function RecipeDetailPage() {
       </div>
 
       <AddToCollectionDialog isOpen={collectionDialog.isOpen} onOpenChange={collectionDialog.setIsOpen} recipe={collectionDialog.recipe} />
+      <CookConfirmModal
+        isOpen={cookModal.isOpen}
+        onOpenChange={cookModal.setIsOpen}
+        recipe={cookModal.recipe}
+        cookServings={cookModal.cookServings}
+      />
     </div>
     </>
   );
