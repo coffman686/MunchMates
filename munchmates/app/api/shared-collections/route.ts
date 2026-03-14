@@ -38,27 +38,32 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
-        const userName = p.preferred_username || p.name || 'Unknown User';
+        const userId = String(p.sub);
+        const preferredUsername = typeof p.preferred_username === "string" ? p.preferred_username.trim() : "";
+        const displayName = typeof p.name === "string" ? p.name.trim() : "";
+        const userName = preferredUsername || displayName || "Unknown User";
 
-        const body = await req.json();
-        const { name, description } = body;
+        const body = await req.json().catch(() => null);
+        const rawName = typeof body?.name === "string" ? body.name : "";
+        const rawDescription = typeof body?.description === "string" ? body.description : "";
+        const name = rawName.trim();
+        const description = rawDescription.trim();
 
-        if (!name || name.trim() === '') {
+        if (!name) {
             return errorResponse(400, "Collection name is required");
         }
 
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: userId },
-            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
-            create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
+            update: {},
+            create: { id: userId },
         });
 
         const collection = await prisma.sharedCollection.create({
             data: {
-                name: name.trim(),
-                description: description?.trim() || '',
+                name,
+                description,
                 createdBy: userId,
                 createdByName: userName,
                 members: {

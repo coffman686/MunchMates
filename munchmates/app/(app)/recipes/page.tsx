@@ -167,12 +167,28 @@ const Recipes = () => {
         setSavedRecipeIds(prev => new Set(prev).add(recipeId));
 
         try {
-            await authedFetch('/api/recipes/saved', {
+            const res = await authedFetch('/api/recipes/saved', {
                 method: 'POST',
                 body: JSON.stringify({ recipeId, recipeName, recipeImage }),
             });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                const message = data?.error?.message || data?.message || 'Failed to save recipe';
+                setSavedRecipeIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(recipeId);
+                    return next;
+                });
+                alert(typeof message === 'string' ? message : 'Failed to save recipe');
+            }
         } catch (error) {
             console.error('Error saving recipe:', error);
+            setSavedRecipeIds(prev => {
+                const next = new Set(prev);
+                next.delete(recipeId);
+                return next;
+            });
+            alert('Failed to save recipe. Please try again.');
         }
     };
 
