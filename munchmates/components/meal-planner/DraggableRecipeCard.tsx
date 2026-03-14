@@ -113,7 +113,7 @@ export default function DraggableRecipeCard({
 
       {/* Remove button */}
       <button
-        className="h-6 w-6 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-all bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 flex-shrink-0"
+        className="h-6 w-6 flex items-center justify-center rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         aria-label="Remove recipe"
       >

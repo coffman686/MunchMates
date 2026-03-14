@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
             create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
-        const data = {
+        const data: Parameters<typeof prisma.customRecipe.create>[0]['data'] = {
             userId,
             title: title.trim(),
             servings: Number(servings) || 1,
@@ -53,6 +53,18 @@ export async function POST(req: NextRequest) {
             ...(image ? { image } : {}),
             ...(summary ? { summary } : {}),
         };
+
+        // Create structured ingredients if provided
+        if (body.structuredIngredients && Array.isArray(body.structuredIngredients) && body.structuredIngredients.length > 0) {
+            data.structuredIngredients = {
+                create: body.structuredIngredients.map((si: { name: string; amount: number; unit: string; original: string }) => ({
+                    name: String(si.name || '').trim(),
+                    amount: Number(si.amount) || 0,
+                    unit: String(si.unit || '').trim(),
+                    original: String(si.original || '').trim(),
+                })),
+            };
+        }
 
         const newRecipe = await prisma.customRecipe.create({ data });
 
@@ -86,10 +98,8 @@ export async function POST(req: NextRequest) {
 }
 
 // Helper: map a DB CustomRecipe row to the RecipeInfo shape the UI expects
-// Converts the flat ingredients string array into the extendedIngredients format
-// used by the RecipeDetailPage component.
-// Custom recipes store ingredients as plain strings (e.g. "2 cups flour"),
-// so amount/unit are left at defaults and the full string goes in name + original.
+// If structuredIngredients are available, uses them for proper amount/unit data.
+// Otherwise falls back to the flat ingredients string array.
 function mapToRecipeInfo(r: {
     id: number;
     title: string;
@@ -101,7 +111,30 @@ function mapToRecipeInfo(r: {
     dishTypes: string[];
     ingredients: string[];
     instructions: string;
+    structuredIngredients?: Array<{
+        id: number;
+        name: string;
+        amount: number;
+        unit: string;
+        original: string;
+    }>;
 }) {
+    const extendedIngredients = r.structuredIngredients && r.structuredIngredients.length > 0
+        ? r.structuredIngredients.map((si) => ({
+            id: si.id,
+            name: si.name,
+            amount: si.amount,
+            unit: si.unit,
+            original: si.original,
+        }))
+        : r.ingredients.map((name, index) => ({
+            id: index,
+            name,
+            amount: 0,
+            unit: "",
+            original: name,
+        }));
+
     return {
         id: r.id,
         title: r.title,
@@ -112,13 +145,7 @@ function mapToRecipeInfo(r: {
         cuisines: r.cuisines,
         dishTypes: r.dishTypes,
         instructions: r.instructions,
-        extendedIngredients: r.ingredients.map((name, index) => ({
-            id: index,
-            name,
-            amount: 0,
-            unit: "",
-            original: name,
-        })),
+        extendedIngredients,
     };
 }
 
@@ -138,7 +165,10 @@ export async function GET(req: NextRequest) {
                 return errorResponse(400, "Invalid recipe ID");
             }
 
-            const recipe = await prisma.customRecipe.findUnique({ where: { id } });
+            const recipe = await prisma.customRecipe.findUnique({
+                where: { id },
+                include: { structuredIngredients: true },
+            });
             if (!recipe) {
                 return errorResponse(404, "Recipe not found");
             }
