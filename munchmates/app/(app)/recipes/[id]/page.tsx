@@ -12,22 +12,26 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
-import { authedFetch } from "@/lib/authedFetch";
 import {
   ArrowLeft,
+  Check,
   Clock,
-  Users,
+  FolderHeart,
   Heart,
   Star,
+  Users,
   Utensils,
-  Check,
-  FolderHeart,
 } from "lucide-react";
-import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import AddToCollectionDialog, {
+  useAddToCollection,
+} from "@/components/recipes/AddToCollectionDialog";
+import { authedFetch } from "@/lib/authedFetch";
+
+var fracty = require("fracty");
 
 type RecipeInfo = {
   id: number;
@@ -95,7 +99,12 @@ function isSpamStep(step: string): boolean {
   if (SPAM_PATTERNS.some((p) => p.test(step))) return true;
   // Very short steps with no cooking-related words are likely junk,
   // but skip section headers like "For the cake:" or "For the Frosting:"
-  if (step.length < 40 && !COOKING_WORDS.test(step) && !step.trimEnd().endsWith(":")) return true;
+  if (
+    step.length < 40 &&
+    !COOKING_WORDS.test(step) &&
+    !step.trimEnd().endsWith(":")
+  )
+    return true;
   return false;
 }
 
@@ -230,8 +239,9 @@ export default function RecipeDetailPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(
-    new Set()
+    new Set(),
   );
+  const [servings, setServings] = useState(1);
 
   const collectionDialog = useAddToCollection();
 
@@ -243,7 +253,9 @@ export default function RecipeDetailPage() {
       setError(null);
 
       try {
-        const customRes = await authedFetch(`/api/recipes/create?id=${recipeId}`);
+        const customRes = await authedFetch(
+          `/api/recipes/create?id=${recipeId}`,
+        );
         const isCustom = customRes.ok;
 
         if (isCustom) {
@@ -255,26 +267,30 @@ export default function RecipeDetailPage() {
 
           // Parse numbered instructions into structured steps
           if (data.recipe.instructions) {
-            const lines = data.recipe.instructions.split("\n").filter((l: string) => l.trim());
-            const parsed: InstructionStep[] = lines.map((line: string, i: number) => ({
-              number: i + 1,
-              step: line.replace(/^\d+\.\s*/, "").trim(),
-            }));
+            const lines = data.recipe.instructions
+              .split("\n")
+              .filter((l: string) => l.trim());
+            const parsed: InstructionStep[] = lines.map(
+              (line: string, i: number) => ({
+                number: i + 1,
+                step: line.replace(/^\d+\.\s*/, "").trim(),
+              }),
+            );
             if (parsed.length > 0) setInstructions(parsed);
           }
 
           if (savedRes.ok) {
             const savedData = await savedRes.json();
             const savedIds = new Set(
-              savedData.recipes.map((r: any) => r.recipeId)
+              savedData.recipes.map((r: any) => r.recipeId),
             );
-            setIsSaved(savedIds.has(parseInt(recipeId)));
+            setIsSaved(savedIds.has(parseInt(recipeId, 10)));
           }
         } else {
           const [infoRes, instructionsRes, savedRes] = await Promise.all([
             fetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
             fetch(
-              `/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`
+              `/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`,
             ),
             authedFetch("/api/recipes/saved"),
           ]);
@@ -299,7 +315,7 @@ export default function RecipeDetailPage() {
               instructionsData.instructions.length > 0
             ) {
               analyzedSteps = filterInstructions(
-                instructionsData.instructions[0]?.steps || []
+                instructionsData.instructions[0]?.steps || [],
               );
             }
           }
@@ -307,20 +323,20 @@ export default function RecipeDetailPage() {
           let htmlSteps: InstructionStep[] = [];
           if (infoData?.instructions) {
             htmlSteps = filterInstructions(
-              parseHtmlInstructions(infoData.instructions)
+              parseHtmlInstructions(infoData.instructions),
             );
           }
 
           setInstructions(
-            htmlSteps.length > analyzedSteps.length ? htmlSteps : analyzedSteps
+            htmlSteps.length > analyzedSteps.length ? htmlSteps : analyzedSteps,
           );
 
           if (savedRes.ok) {
             const savedData = await savedRes.json();
             const savedIds = new Set(
-              savedData.recipes.map((r: any) => r.recipeId)
+              savedData.recipes.map((r: any) => r.recipeId),
             );
-            setIsSaved(savedIds.has(parseInt(recipeId)));
+            setIsSaved(savedIds.has(parseInt(recipeId, 10)));
           }
         }
       } catch (err) {
@@ -368,6 +384,31 @@ export default function RecipeDetailPage() {
       return next;
     });
   };
+
+  const scaledIngredients = useMemo(() => {
+    if (!recipe?.extendedIngredients) {
+      return null;
+    }
+
+    return recipe?.extendedIngredients?.map((ingredient) => {
+      const amount = fracty(Number((ingredient.amount * servings).toFixed(2)))
+        .toString()
+        .normalize("NFKC")
+        .replace(/ /, "\u202F")
+        .replace(/\//, "\u2044");
+
+      // replace fractions with cooler fractions
+      const original = ingredient.original
+        .normalize("NFKD")
+        .replace(/^[0-9 /\-\u2044]+/, `${amount} `);
+
+      return {
+        ...ingredient,
+        amount,
+        original,
+      };
+    });
+  }, [recipe, servings]);
 
   if (!recipeId) return null;
 
@@ -443,7 +484,14 @@ export default function RecipeDetailPage() {
                   />
                 </button>
                 <button
-                  onClick={() => recipe && collectionDialog.openDialog({ id: recipe.id, title: recipe.title, image: recipe.image })}
+                  onClick={() =>
+                    recipe &&
+                    collectionDialog.openDialog({
+                      id: recipe.id,
+                      title: recipe.title,
+                      image: recipe.image,
+                    })
+                  }
                   className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-background/80 transition-colors"
                   title="Add to collection"
                 >
@@ -454,13 +502,16 @@ export default function RecipeDetailPage() {
 
             {/* Stat cards row */}
             <div className="flex items-center gap-4 mb-5 text-sm">
-              {recipe.spoonacularScore != null && recipe.spoonacularScore > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-                  <span className="font-semibold">{Math.round(recipe.spoonacularScore)}</span>
-                  <span className="text-muted-foreground">score</span>
-                </div>
-              )}
+              {recipe.spoonacularScore != null &&
+                recipe.spoonacularScore > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+                    <span className="font-semibold">
+                      {Math.round(recipe.spoonacularScore)}
+                    </span>
+                    <span className="text-muted-foreground">score</span>
+                  </div>
+                )}
               {recipe.readyInMinutes != null && (
                 <div className="flex items-center gap-1.5">
                   <Clock className="h-4 w-4 text-primary" />
@@ -544,7 +595,9 @@ export default function RecipeDetailPage() {
 
       {/* Two-Column Layout — Instructions + Ingredients */}
       <div className="px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-        <div className={`flex flex-col-reverse gap-6 ${hasAnyInstructions ? "md:flex-row md:gap-8" : ""}`}>
+        <div
+          className={`flex flex-col-reverse gap-6 ${hasAnyInstructions ? "md:flex-row md:gap-8" : ""}`}
+        >
           {/* Left Column — Instructions */}
           {hasAnyInstructions && (
             <div className="md:w-[60%]">
@@ -579,9 +632,21 @@ export default function RecipeDetailPage() {
           {hasIngredients && (
             <div className={hasAnyInstructions ? "md:w-[40%]" : "w-full"}>
               <div className="md:sticky md:top-6 rounded-2xl border bg-muted/40 p-6 sm:p-8">
-                <h2 className="text-xl font-semibold mb-4">Ingredients</h2>
+                <div className="flex justify-between items-center gap-4 mb-2">
+                  <h2 className="text-xl font-semibold">Ingredients</h2>
+                  <div className="flex items-center gap-4">
+                    <p className="bg-muted">Servings:</p>
+                    <input
+                      className="w-16 border rounded text-right"
+                      type="number"
+                      min="1"
+                      defaultValue="1"
+                      onChange={(e) => setServings(Number(e.target.value) || 1)}
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1">
-                  {recipe.extendedIngredients!.map((ingredient, index) => {
+                  {scaledIngredients?.map((ingredient, index) => {
                     const checked = checkedIngredients.has(index);
                     return (
                       <button
@@ -621,7 +686,11 @@ export default function RecipeDetailPage() {
         </div>
       </div>
 
-      <AddToCollectionDialog isOpen={collectionDialog.isOpen} onOpenChange={collectionDialog.setIsOpen} recipe={collectionDialog.recipe} />
+      <AddToCollectionDialog
+        isOpen={collectionDialog.isOpen}
+        onOpenChange={collectionDialog.setIsOpen}
+        recipe={collectionDialog.recipe}
+      />
     </div>
   );
 }
