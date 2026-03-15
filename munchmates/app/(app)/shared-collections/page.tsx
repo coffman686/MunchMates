@@ -136,8 +136,9 @@ const SharedCollectionsPage = () => {
                 setNewCollectionDescription('');
                 setIsCreateDialogOpen(false);
             } else {
-                const error = await response.json();
-                alert(error.error || 'Failed to create collection');
+                const error = await response.json().catch(() => ({}));
+                const message = error?.error?.message || error?.message || 'Failed to create collection';
+                alert(typeof message === 'string' ? message : 'Failed to create collection');
             }
         } catch (error) {
             console.error('Error creating collection:', error);

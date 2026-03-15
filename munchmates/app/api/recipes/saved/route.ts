@@ -13,12 +13,17 @@ import { prisma } from "@/lib/prisma";
 export async function POST(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
+        const userId = String(p.sub);
 
-        const body = await req.json();
-        const { recipeId, recipeName, recipeImage } = body;
+        const body = await req.json().catch(() => null);
+        const recipeId = Number(body?.recipeId);
+        const recipeName = typeof body?.recipeName === "string" ? body.recipeName.trim() : "";
+        const recipeImage =
+            typeof body?.recipeImage === "string" && body.recipeImage.trim() !== ""
+                ? body.recipeImage.trim()
+                : null;
 
-        if (!recipeId || !recipeName) {
+        if (!Number.isFinite(recipeId) || recipeId <= 0 || !recipeName) {
             return errorResponse(400, "Missing required fields: recipeId and recipeName");
         }
 
@@ -37,12 +42,12 @@ export async function POST(req: NextRequest) {
         // Ensure User record exists
         await prisma.user.upsert({
             where: { id: userId },
-            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
-            create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
+            update: {},
+            create: { id: userId },
         });
 
         const newSavedRecipe = await prisma.savedRecipe.create({
-            data: { userId, recipeId, recipeName, recipeImage: recipeImage || null },
+            data: { userId, recipeId, recipeName, recipeImage },
         });
 
         return NextResponse.json(
@@ -94,7 +99,7 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
+        const userId = String(p.sub);
 
         const searchParams = req.nextUrl.searchParams;
         const recipeId = searchParams.get("recipeId");
@@ -103,8 +108,13 @@ export async function DELETE(req: NextRequest) {
             return errorResponse(400, "Missing recipeId parameter");
         }
 
+        const numericRecipeId = Number(recipeId);
+        if (!Number.isFinite(numericRecipeId) || numericRecipeId <= 0) {
+            return errorResponse(400, "Invalid recipeId parameter");
+        }
+
         const deleted = await prisma.savedRecipe.deleteMany({
-            where: { userId, recipeId: parseInt(recipeId) },
+            where: { userId, recipeId: numericRecipeId },
         });
 
         if (deleted.count === 0) {
