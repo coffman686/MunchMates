@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
+import { formatQuantity, mergeQuantityStrings } from "@/lib/grocery-consolidation";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { normalize } from "@/lib/normalize";
@@ -13,13 +14,6 @@ interface AggregatedIngredient {
     totalAmount: number;
     unit: string;
     category: string;
-}
-
-// Format quantity string for display
-function formatQuantity(amount: number, unit: string): string {
-    if (!amount && !unit) return "";
-    if (!unit) return amount.toString();
-    return `${amount} ${unit}`;
 }
 
 // POST /api/grocery/import — Import ingredients from meal plan
@@ -110,11 +104,11 @@ export async function POST(req: NextRequest) {
             const existing = existingByName.get(nameLower);
 
             if (existing) {
-                // Update existing item - append quantity if both have values
-                const newQuantity =
-                    existing.quantity && quantity
-                        ? `${existing.quantity} + ${quantity}`
-                        : quantity || existing.quantity;
+                const newQuantity = mergeQuantityStrings(
+                    existing.quantity,
+                    ingredient.totalAmount,
+                    ingredient.unit
+                );
 
                 await prisma.groceryItem.update({
                     where: { id: existing.id },
@@ -122,6 +116,11 @@ export async function POST(req: NextRequest) {
                         quantity: newQuantity,
                         fromMealPlan: true,
                     },
+                });
+                existingByName.set(nameLower, {
+                    ...existing,
+                    quantity: newQuantity,
+                    fromMealPlan: true,
                 });
                 updatedCount++;
             } else {
