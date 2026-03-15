@@ -20,7 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${notoSans.variable} antialiased`}>
-        <main style={{ minHeight: '80vh', padding: '1rem' }}>{children}</main>
+        <main className="main-layout">{children}</main>
       </body>
     </html>
   );
