@@ -67,7 +67,21 @@ model CustomRecipe {
   summary        String?
   createdAt      DateTime @default(now())
 
+  structuredIngredients CustomRecipeIngredient[]
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Structured ingredient for custom recipes (parsed amount + unit + name)
+model CustomRecipeIngredient {
+  id       Int    @id @default(autoincrement())
+  recipeId Int
+  name     String
+  amount   Float
+  unit     String
+  original String
+
+  recipe CustomRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 }
 
 // Shared recipe collections
@@ -153,6 +167,8 @@ model PantryItem {
   name       String
   canonName  String    @default("")
   quantity   String
+  amount     Float?
+  unit       String    @default("")
   category   String
   expiryDate DateTime?
   addedAt    DateTime  @default(now())

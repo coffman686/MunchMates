@@ -4,16 +4,18 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, Clock, Users, Upload, X, Plus, Utensils } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Upload, X, Plus, Minus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import Autosuggest from '@/components/ingredients/Autosuggest';
 import { authedFetch } from '@/lib/authedFetch';
 import { ensureToken, waitForInit } from '@/lib/keycloak';
+import { formatAmount } from '@/lib/unit-conversion';
 
 const dishTypes = ['main course', 'side dish', 'dessert', 'appetizer', 'salad', 'bread', 'breakfast', 'soup', 'beverage', 'sauce', 'marinade', 'fingerfood', 'snack', 'drink'];
 const cuisines = ['African', 'Asian', 'American', 'British', 'Cajun', 'Caribbean', 'Chinese', 'Eastern European', 'European', 'French', 'German', 'Greek', 'Indian', 'Irish', 'Italian', 'Japanese', 'Jewish', 'Korean', 'Latin American', 'Mediterranean', 'Mexican', 'Middle Eastern', 'Nordic', 'Southern', 'Spanish', 'Thai', 'Vietnamese'];
+const COMMON_UNITS = ['', 'cups', 'tbsp', 'tsp', 'oz', 'lbs', 'g', 'kg', 'ml', 'L', 'pieces', 'cloves', 'slices', 'cans', 'whole'];
 
 const ingredientData = [
     "Apple", "Banana", "Orange", "Lemon", "Lime", "Grapefruit", "Strawberry", "Blueberry",
@@ -47,6 +49,12 @@ const ingredientData = [
     "Soy Sauce", "Vinegar", "Flour", "Sugar", "Honey",
 ];
 
+interface StructuredIngredient {
+    name: string;
+    amount: number;
+    unit: string;
+}
+
 export default function CreateRecipePage() {
     const router = useRouter();
 
@@ -55,8 +63,10 @@ export default function CreateRecipePage() {
     const [servings, setServings] = useState(1);
     const [dishType, setDishType] = useState('main course');
     const [cuisine, setCuisine] = useState('American');
-    const [ingredients, setIngredients] = useState<string[]>([]);
-    const [newIngredient, setNewIngredient] = useState('');
+    const [ingredients, setIngredients] = useState<StructuredIngredient[]>([]);
+    const [newIngredientName, setNewIngredientName] = useState('');
+    const [newIngredientAmount, setNewIngredientAmount] = useState('');
+    const [newIngredientUnit, setNewIngredientUnit] = useState('');
     const [steps, setSteps] = useState<string[]>(['']);
     const [summary, setSummary] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -72,16 +82,34 @@ export default function CreateRecipePage() {
     };
 
     const handleAddIngredient = () => {
-        const trimmed = newIngredient.trim();
-        if (trimmed && !ingredients.includes(trimmed)) {
-            setIngredients(prev => [...prev, trimmed]);
-            setNewIngredient('');
-            setErrors(prev => { const { ingredients: _, ...rest } = prev; return rest; });
-        }
+        const name = newIngredientName.trim();
+        const amount = parseFloat(newIngredientAmount) || 0;
+        const unit = newIngredientUnit === '__none' ? '' : newIngredientUnit;
+        if (!name) return;
+
+        setIngredients(prev => [...prev, { name, amount, unit }]);
+        setNewIngredientName('');
+        setNewIngredientAmount('');
+        setNewIngredientUnit('');
+        setErrors(prev => { const { ingredients: _, ...rest } = prev; return rest; });
+    };
+
+    const handleSelectIngredient = (item: string) => {
+        const name = item.trim();
+        if (!name) return;
+        setNewIngredientName(name);
     };
 
     const handleRemoveIngredient = (index: number) => {
         setIngredients(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const formatIngredientDisplay = (ing: StructuredIngredient): string => {
+        const parts: string[] = [];
+        if (ing.amount > 0) parts.push(formatAmount(ing.amount));
+        if (ing.unit) parts.push(ing.unit);
+        parts.push(ing.name);
+        return parts.join(' ');
     };
 
     const handleStepChange = (index: number, value: string) => {
@@ -133,6 +161,15 @@ export default function CreateRecipePage() {
             // Join non-empty steps with newlines
             const instructionsText = steps.filter(s => s.trim()).map((s, i) => `${i + 1}. ${s.trim()}`).join('\n');
 
+            // Build both legacy string array and structured ingredients
+            const ingredientStrings = ingredients.map(formatIngredientDisplay);
+            const structuredIngredients = ingredients.map((ing) => ({
+                name: ing.name,
+                amount: ing.amount,
+                unit: ing.unit,
+                original: formatIngredientDisplay(ing),
+            }));
+
             const response = await authedFetch('/api/recipes/create', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -141,7 +178,8 @@ export default function CreateRecipePage() {
                     readyInMinutes,
                     dishTypes: [dishType],
                     cuisines: [cuisine],
-                    ingredients,
+                    ingredients: ingredientStrings,
+                    structuredIngredients,
                     instructions: instructionsText,
                     image: imageUrl,
                     summary: summary.trim() || undefined,
@@ -162,6 +200,13 @@ export default function CreateRecipePage() {
             alert(error.message || 'Failed to create recipe. Please try again.');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleIngredientKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddIngredient();
         }
     };
 
@@ -193,7 +238,7 @@ export default function CreateRecipePage() {
                         />
                         {errors.title && <p className="text-sm text-destructive -mt-3 mb-3">{errors.title}</p>}
 
-                        {/* Stat inputs row */}
+                        {/* Stat inputs row — matches detail page style */}
                         <div className="flex items-center gap-4 mb-5 text-sm">
                             <div className="flex items-center gap-1.5">
                                 <Clock className="h-4 w-4 text-primary" />
@@ -208,13 +253,22 @@ export default function CreateRecipePage() {
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <Users className="h-4 w-4 text-primary" />
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    value={servings}
-                                    onChange={(e) => setServings(parseInt(e.target.value) || 1)}
-                                    className="w-16 h-7 text-center text-sm font-semibold px-1"
-                                />
+                                <button
+                                    type="button"
+                                    className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                                    onClick={() => setServings(Math.max(1, servings - 1))}
+                                    disabled={servings <= 1}
+                                >
+                                    <Minus className="h-3 w-3" />
+                                </button>
+                                <span className="font-semibold tabular-nums">{servings}</span>
+                                <button
+                                    type="button"
+                                    className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                                    onClick={() => setServings(servings + 1)}
+                                >
+                                    <Plus className="h-3 w-3" />
+                                </button>
                                 <span className="text-muted-foreground">servings</span>
                             </div>
                         </div>
@@ -298,6 +352,20 @@ export default function CreateRecipePage() {
                 </div>
             </div>
 
+            {/* About This Recipe */}
+            <div className="px-4 sm:px-6 lg:px-8 pb-2">
+                <div className="rounded-2xl border bg-muted/40 p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-3">About This Recipe</h2>
+                    <textarea
+                        value={summary}
+                        onChange={(e) => setSummary(e.target.value)}
+                        placeholder="Add a description or notes about your recipe..."
+                        rows={3}
+                        className="w-full rounded-xl border bg-background px-4 py-3 text-muted-foreground leading-7 text-[15px] resize-none outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors placeholder:text-muted-foreground/40"
+                    />
+                </div>
+            </div>
+
             {/* Two-Column Layout */}
             <div className="px-4 sm:px-6 lg:px-8 py-8 md:py-12">
                 <div className="flex flex-col-reverse md:flex-row md:gap-8 gap-6">
@@ -360,7 +428,9 @@ export default function CreateRecipePage() {
                                             key={index}
                                             className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-background/60 transition-colors"
                                         >
-                                            <span className="flex-1 text-sm text-foreground">{ingredient}</span>
+                                            <span className="flex-1 text-sm text-foreground">
+                                                {formatIngredientDisplay(ingredient)}
+                                            </span>
                                             <button
                                                 type="button"
                                                 onClick={() => handleRemoveIngredient(index)}
@@ -373,26 +443,44 @@ export default function CreateRecipePage() {
                                 </div>
                             )}
 
-                            {/* Add ingredient */}
+                            {/* Add ingredient — structured inputs */}
                             <div className="space-y-2">
-                                <Autosuggest
-                                    data={[...ingredientData, ...ingredients]}
-                                    query={newIngredient}
-                                    setQuery={setNewIngredient}
-                                    onSelect={(item) => {
-                                        if (item.trim() && !ingredients.includes(item.trim())) {
-                                            setIngredients(prev => [...prev, item.trim()]);
-                                            setErrors(prev => { const { ingredients: _, ...rest } = prev; return rest; });
-                                        }
-                                        setNewIngredient('');
-                                    }}
-                                />
+                                <div className="flex gap-2">
+                                    <div className="flex-1 min-w-0">
+                                        <Autosuggest
+                                            data={[...ingredientData, ...ingredients.map(i => i.name)]}
+                                            query={newIngredientName}
+                                            setQuery={setNewIngredientName}
+                                            onSelect={handleSelectIngredient}
+                                        />
+                                    </div>
+                                    <Input
+                                        type="number"
+                                        placeholder="Qty"
+                                        value={newIngredientAmount}
+                                        onChange={(e) => setNewIngredientAmount(e.target.value)}
+                                        onKeyDown={handleIngredientKeyDown}
+                                        className="w-20 h-9 text-sm flex-shrink-0"
+                                        min={0}
+                                        step="any"
+                                    />
+                                    <Select value={newIngredientUnit || '__none'} onValueChange={(v) => setNewIngredientUnit(v === '__none' ? '' : v)}>
+                                        <SelectTrigger className="w-[100px] h-9 text-sm flex-shrink-0">
+                                            <SelectValue placeholder="Unit" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {COMMON_UNITS.map(u => (
+                                                <SelectItem key={u || '__none'} value={u || '__none'}>{u || 'No unit'}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <Button
                                     type="button"
                                     onClick={handleAddIngredient}
                                     variant="outline"
                                     className="w-full"
-                                    disabled={!newIngredient.trim()}
+                                    disabled={!newIngredientName.trim()}
                                 >
                                     <Plus className="h-4 w-4 mr-1" />
                                     Add Ingredient
@@ -403,21 +491,6 @@ export default function CreateRecipePage() {
                 </div>
             </div>
 
-            {/* Summary Section — Full Width */}
-            <div className="border-t bg-muted/40">
-                <div className="px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-                    <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                        About this recipe
-                    </h2>
-                    <textarea
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        placeholder="Add a description or notes about your recipe..."
-                        rows={4}
-                        className="w-full rounded-xl border bg-background px-4 py-3 text-muted-foreground leading-7 resize-none outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors placeholder:text-muted-foreground/40"
-                    />
-                </div>
-            </div>
         </div>
     );
 }
