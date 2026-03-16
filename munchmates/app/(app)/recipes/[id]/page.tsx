@@ -12,26 +12,27 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
-import { authedFetch } from "@/lib/authedFetch";
+
 import {
   ArrowLeft,
-  Clock,
-  Users,
-  Heart,
-  Star,
-  Utensils,
   Check,
-  FolderHeart,
   ChefHat,
+  Clock,
+  FolderHeart,
+  Heart,
   Minus,
   Plus,
+  Star,
+  Users,
+  Utensils,
 } from "lucide-react";
-import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import CookConfirmModal, { useCookModal } from '@/components/cook/CookConfirmModal';
+import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
+import { authedFetch } from "@/lib/authedFetch";
 import { formatAmount } from '@/lib/unit-conversion';
 
 type RecipeInfo = {
@@ -240,7 +241,7 @@ export default function RecipeDetailPage() {
 
   const collectionDialog = useAddToCollection();
   const cookModal = useCookModal();
-  const [displayServings, setDisplayServings] = useState<number>(1);
+  const [displayServings, setDisplayServings] = useState<number | string>(1);
 
   useEffect(() => {
     const fetchRecipeData = async () => {
@@ -276,7 +277,7 @@ export default function RecipeDetailPage() {
             const savedIds = new Set(
               savedData.recipes.map((r: any) => r.recipeId)
             );
-            setIsSaved(savedIds.has(parseInt(recipeId)));
+            setIsSaved(savedIds.has(parseInt(recipeId, 10)));
           }
         } else {
           const [infoRes, instructionsRes, savedRes] = await Promise.all([
@@ -329,7 +330,7 @@ export default function RecipeDetailPage() {
             const savedIds = new Set(
               savedData.recipes.map((r: any) => r.recipeId)
             );
-            setIsSaved(savedIds.has(parseInt(recipeId)));
+            setIsSaved(savedIds.has(parseInt(recipeId, 10)));
           }
         }
       } catch (err) {
@@ -378,6 +379,30 @@ export default function RecipeDetailPage() {
     });
   };
 
+  const scaledIngredients = useMemo(() => {
+    if (!recipe?.extendedIngredients) {
+      return []
+    }
+
+    return recipe.extendedIngredients.map((ingredient) => {
+      const servings = parseFloat(displayServings.toString()) || recipe.servings || 1;
+      const realServings = recipe.servings ? servings / recipe.servings : 1;
+      const displayAmount = formatAmount(realServings * ingredient.amount)
+        .replace(/ /, "\u202F")
+        .replace(/\//, "\u2044");
+
+      // replace fraction with our own
+      const scaledOriginal = ingredient.original
+        .normalize("NFKD")
+        .replace(/^[0-9 /\-\u2044]+/, `${displayAmount} `);
+
+      return {
+        ...ingredient,
+        original: scaledOriginal
+      }
+    })
+  }, [recipe, displayServings])
+
   if (!recipeId) return null;
 
   // --- Error state ---
@@ -402,6 +427,7 @@ export default function RecipeDetailPage() {
       </div>
     );
   }
+
 
   // --- Loading state ---
   if (isLoading) return <RecipeSkeleton />;
@@ -576,17 +602,27 @@ export default function RecipeDetailPage() {
                   <Users className="h-4 w-4 text-primary" />
                   <button
                     className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                    onClick={() => setDisplayServings(Math.max(1, displayServings - 1))}
-                    disabled={displayServings <= 1}
+                    onClick={() => {
+                      const servings = parseFloat(displayServings.toString()) || recipe.servings || 1;
+                      setDisplayServings(Math.max(1, servings - 1))
+                    }}
+                    disabled={parseFloat(displayServings.toString()) <= 1}
                   >
                     <Minus className="h-3 w-3" />
                   </button>
                   <span className={`font-semibold tabular-nums ${displayServings !== recipe.servings ? 'text-primary' : ''}`}>
-                    {displayServings}
+
+                  <input className="w-12 border text-center [appearance:textfield]" type="number" min="1" placeholder={recipe.servings.toString()} value={displayServings.toString()} onChange={(e) => {
+                      setDisplayServings(parseFloat(e.target.value.toString()));
+                    }}
+                    />
                   </span>
                   <button
                     className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                    onClick={() => setDisplayServings(displayServings + 1)}
+                    onClick={() => {
+                      const servings = parseFloat(displayServings.toString()) || recipe.servings || 1;
+                      setDisplayServings(servings + 1)
+                    }}
                   >
                     <Plus className="h-3 w-3" />
                   </button>
@@ -700,13 +736,8 @@ export default function RecipeDetailPage() {
               <div className="md:sticky md:top-6 rounded-2xl border bg-muted/40 p-6 sm:p-8">
                 <h2 className="text-xl font-semibold mb-4">Ingredients</h2>
                 <div className="space-y-1">
-                  {recipe.extendedIngredients!.map((ingredient, index) => {
+                  {scaledIngredients.map((ingredient, index) => {
                     const checked = checkedIngredients.has(index);
-                    const scale = recipe.servings ? displayServings / recipe.servings : 1;
-                    const scaledAmount = ingredient.amount * scale;
-                    const displayText = ingredient.amount > 0
-                      ? `${formatAmount(scaledAmount)} ${ingredient.unit} ${ingredient.name}`.trim()
-                      : ingredient.original;
                     return (
                       <button
                         key={`${ingredient.id}-${index}`}
@@ -733,7 +764,7 @@ export default function RecipeDetailPage() {
                               : "text-foreground"
                           }`}
                         >
-                          {displayText}
+                          {ingredient.original}
                         </span>
                       </button>
                     );
