@@ -1,7 +1,7 @@
 # 🥗 MunchMates
 **Capstone Project – Fall 2025 -> Spring 2026**  
 **Team 17 • University of Kansas • EECS 582: Computer Science Capstone**  
-**The video demo for this project can be found here: [MunchMates Demo](https://drive.google.com/file/d/1emgFaO0tZ4wGwE9JFasXCoqDHG3-TNd6/view?usp=sharing)**
+**The video demo for this project can be found here (12/25): [MunchMates Demo](https://drive.google.com/file/d/1emgFaO0tZ4wGwE9JFasXCoqDHG3-TNd6/view?usp=sharing)**
 <br/>
 **Current live requirement stack: [Requirement Stack](https://docs.google.com/spreadsheets/d/1eePEHFjbzgBVNzvtzwRsuuwQ06P7JTnwYQXF8219UlY/edit?usp=sharing)**
 <br/>
