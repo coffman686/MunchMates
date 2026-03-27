@@ -33,7 +33,10 @@ model UserProfile {
   favoriteCuisines String   @default("")
   diets            String[] @default([])
   intolerances     String[] @default([])
-
+  dailyCalorieGoal  Int?
+  dailyProteinGoal  Int?
+  dailyCarbGoal     Int?
+  dailyFatGoal      Int?
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

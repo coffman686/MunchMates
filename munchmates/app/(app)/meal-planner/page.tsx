@@ -25,6 +25,7 @@ import AppSidebar from '@/components/layout/app-sidebar';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ShoppingCart,
   Loader2,
   Coffee,
@@ -73,6 +74,54 @@ const DIET_OPTIONS = [
   'Low FODMAP', 'Whole30',
 ];
 
+type NutritionMetricProgress = {
+  current: number;
+  target: number | null;
+  percent: number | null;
+  remaining: number | null;
+  status: "under" | "met" | "over" | "no-goal";
+};
+
+type NutritionDaySummary = {
+  date: string;
+  totals: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  goals: {
+    dailyCalorieGoal: number | null;
+    dailyProteinGoal: number | null;
+    dailyCarbGoal: number | null;
+    dailyFatGoal: number | null;
+  };
+  progress: {
+    calories: NutritionMetricProgress;
+    protein: NutritionMetricProgress;
+    carbs: NutritionMetricProgress;
+    fat: NutritionMetricProgress;
+  };
+  meals: {
+    mealType: string;
+    recipeId: number;
+    title: string;
+    servings: number;
+    originalServings: number;
+    nutrition: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+    };
+  }[];
+};
+
+function clampPercent(value: number | null): number {
+  if (value === null || Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(value, 100));
+}
+
 const MealPlanner = () => {
   const router = useRouter();
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -99,6 +148,14 @@ const MealPlanner = () => {
 
   // drag-and-drop state
   const [activeDragEntry, setActiveDragEntry] = useState<MealPlanEntry | null>(null);
+
+  // dietary goals state
+  const [nutritionDays, setNutritionDays] = useState<NutritionDaySummary[]>([]);
+  const [nutritionLoading, setNutritionLoading] = useState(false);
+  const [selectedNutritionDate, setSelectedNutritionDate] = useState("");
+
+  // dietary goals section collapse
+  const [nutritionCollapsed, setNutritionCollapsed] = useState(false);
 
   useEffect(() => {
     setCurrentDate(new Date());
@@ -145,7 +202,7 @@ const MealPlanner = () => {
 
       const token = await ensureToken();
       if (token) {
-        await fetch('/api/meal-plan', {
+        const saveRes = await fetch('/api/meal-plan', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -153,7 +210,32 @@ const MealPlanner = () => {
           },
           body: JSON.stringify({ plan }),
         });
+
+        if (!saveRes.ok) {
+          throw new Error('Failed to save meal plan');
+        }
+
+        const nutritionRes = await fetch(`/api/meal-plan/nutrition-summary?weekStart=${plan.weekStart}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (nutritionRes.ok) {
+          const nutritionData = await nutritionRes.json();
+          const days: NutritionDaySummary[] = nutritionData.days ?? [];
+          setNutritionDays(days);
+
+          setSelectedNutritionDate((prev) => {
+            if (prev && days.some((d) => d.date === prev)) return prev;
+
+            const todayStr = formatLocalDateStr(new Date());
+            if (days.some((d) => d.date === todayStr)) return todayStr;
+            return days[0]?.date ?? "";
+          });
+        }
       }
+
       setSaveStatus('saved');
     } catch (error) {
       console.error('Failed to save meal plan:', error);
@@ -202,6 +284,52 @@ const MealPlanner = () => {
     };
 
     loadMealPlan();
+  }, [weekStartStr]);
+  // dietary goals nutrition load
+  useEffect(() => {
+    const loadNutritionSummary = async () => {
+      setNutritionLoading(true);
+      try {
+        const token = await ensureToken();
+        if (!token) {
+          setNutritionDays([]);
+          setNutritionLoading(false);
+          return;
+        }
+
+        const res = await fetch(`/api/meal-plan/nutrition-summary?weekStart=${weekStartStr}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) {
+          setNutritionDays([]);
+          setNutritionLoading(false);
+          return;
+        }
+
+        const data = await res.json();
+        const days: NutritionDaySummary[] = data.days ?? [];
+        setNutritionDays(days);
+
+        const todayStr = formatLocalDateStr(new Date());
+        const isThisWeek = days.some((d) => d.date === todayStr);
+
+        if (isThisWeek) {
+          setSelectedNutritionDate(todayStr);
+        } else if (days.length > 0) {
+          setSelectedNutritionDate(days[0].date);
+        } else {
+          setSelectedNutritionDate("");
+        }
+      } catch (error) {
+        console.error("Failed to load nutrition summary:", error);
+        setNutritionDays([]);
+      } finally {
+        setNutritionLoading(false);
+      }
+    };
+
+    loadNutritionSummary();
   }, [weekStartStr]);
 
   useEffect(() => {
@@ -429,6 +557,27 @@ const MealPlanner = () => {
     return count + (day.breakfast ? 1 : 0) + (day.lunch ? 1 : 0) + (day.dinner ? 1 : 0);
   }, 0) ?? 0;
 
+  const selectedNutritionDay =
+      nutritionDays.find((day) => day.date === selectedNutritionDate) ??
+      nutritionDays[0] ??
+      null;
+  //Helper for nutrition info
+  const renderProgressLabel = (metric: NutritionMetricProgress, unit = "") => {
+    if (metric.target === null) {
+      return `${metric.current}${unit} logged`;
+    }
+
+    if (metric.status === "over") {
+      return `${Math.abs(metric.remaining ?? 0)}${unit} over`;
+    }
+
+    if (metric.status === "met") {
+      return "Goal met";
+    }
+
+    return `${metric.remaining ?? 0}${unit} remaining`;
+  };
+
   return (
     <RequireAuth>
       <SidebarProvider defaultOpen={false}>
@@ -628,32 +777,200 @@ const MealPlanner = () => {
                       )}
                     </div>
                   </div>
-
-                  {/* Meal planning grid */}
-                  {isLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : (
-                    <div className="bg-background rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-                      {/* Column headers */}
-                      <div className="hidden sm:flex items-center gap-3 px-3 py-3 border-b border-border/50 bg-muted/20">
-                        <div className="w-16 flex-shrink-0" />
-                        {MEALS.map((meal) => {
-                          const { icon: Icon, color, bg } = MEAL_ICONS[meal];
-                          return (
-                            <div key={meal} className="flex-1 flex items-center justify-center gap-2">
-                              <div className={`${bg} p-1.5 rounded-lg`}>
-                                <Icon className="h-4 w-4" style={{ color }} />
-                              </div>
-                              <span className="font-semibold text-sm capitalize" style={{ color }}>{meal}</span>
-                            </div>
-                          );
-                        })}
+                  {/* Daily nutrition progress */}
+                  <div className="bg-background rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+                    <div
+                        className="px-4 sm:px-5 py-4 border-b border-border/40 flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-[15px] font-semibold">Daily Nutrition Progress</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Compare each day’s planned meals against your saved dietary goals.
+                        </p>
                       </div>
 
-                      {/* Day rows */}
-                      <div className="divide-y divide-border/30">
+                      <div className="flex items-center gap-2">
+                        {nutritionDays.length > 0 && (
+                            <div className="w-44">
+                              <Select value={selectedNutritionDate} onValueChange={setSelectedNutritionDate}>
+                                <SelectTrigger className="rounded-xl h-9">
+                                  <SelectValue placeholder="Select day"/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {nutritionDays.map((day) => (
+                                      <SelectItem key={day.date} value={day.date}>
+                                        {new Date(day.date + "T00:00:00").toLocaleDateString(undefined, {
+                                          weekday: "short",
+                                          month: "short",
+                                          day: "numeric",
+                                        })}
+                                      </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                        )}
+
+                        {/* Collapse toggle */}
+                        <button
+                            onClick={() => setNutritionCollapsed((prev) => !prev)}
+                            className="p-2 rounded-lg hover:bg-muted transition-colors"
+                        >
+                          {nutritionCollapsed ? (
+                              <ChevronDown className="h-4 w-4"/>
+                          ) : (
+                              <ChevronUp className="h-4 w-4"/>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                        className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                            nutritionCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100"
+                        }`}
+                    >
+                      <div className="p-4 sm:p-5">
+                      {nutritionLoading ? (
+                          <div className="flex items-center justify-center py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/>
+                          </div>
+                      ) : !selectedNutritionDay ? (
+                          <div className="py-4 text-sm text-muted-foreground">
+                            Add meals to your planner and save the week to see nutrition progress.
+                          </div>
+                      ) : (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {[
+                                {
+                                  label: "Calories",
+                                  unit: "",
+                                  total: selectedNutritionDay.totals.calories,
+                                  metric: selectedNutritionDay.progress.calories,
+                                },
+                                {
+                                  label: "Protein",
+                                  unit: "g",
+                                  total: selectedNutritionDay.totals.protein,
+                                  metric: selectedNutritionDay.progress.protein,
+                                },
+                                {
+                                  label: "Carbs",
+                                  unit: "g",
+                                  total: selectedNutritionDay.totals.carbs,
+                                  metric: selectedNutritionDay.progress.carbs,
+                                },
+                                {
+                                  label: "Fat",
+                                  unit: "g",
+                                  total: selectedNutritionDay.totals.fat,
+                                  metric: selectedNutritionDay.progress.fat,
+                                },
+                              ].map((item) => (
+                                  <div
+                                      key={item.label}
+                                      className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3"
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-sm font-semibold">{item.label}</span>
+                                      <span className="text-sm text-muted-foreground">
+                  {item.total}
+                                        {item.unit}
+                                        {item.metric.target !== null ? ` / ${item.metric.target}${item.unit}` : ""}
+                </span>
+                                    </div>
+
+                                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                      <div
+                                          className="h-full rounded-full transition-all duration-500"
+                                          style={{
+                                            width: `${clampPercent(item.metric.percent)}%`,
+                                            background:
+                                                item.metric.status === "over"
+                                                    ? "linear-gradient(90deg, hsl(0 84% 60%), hsl(12 90% 60%))"
+                                                    : item.metric.status === "met"
+                                                        ? "linear-gradient(90deg, hsl(142 76% 36%), hsl(160 84% 39%))"
+                                                        : "linear-gradient(90deg, hsl(14 80% 50%), hsl(30 90% 52%))",
+                                          }}
+                                      />
+                                    </div>
+
+                                    <div className="mt-2 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {renderProgressLabel(item.metric, item.unit)}
+                </span>
+                                      <span className="font-medium text-foreground/70">
+                  {item.metric.percent !== null ? `${item.metric.percent}%` : "No goal"}
+                </span>
+                                    </div>
+                                  </div>
+                              ))}
+                            </div>
+
+                            {selectedNutritionDay.meals.length > 0 && (
+                                <div className="rounded-2xl border border-border/40 bg-background">
+                                  <div className="px-4 py-3 border-b border-border/40">
+                                    <h4 className="text-sm font-semibold">Meal Breakdown</h4>
+                                  </div>
+
+                                  <div className="divide-y divide-border/30">
+                                    {selectedNutritionDay.meals.map((meal) => (
+                                        <div
+                                            key={`${selectedNutritionDay.date}-${meal.mealType}-${meal.recipeId}`}
+                                            className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                                        >
+                                          <div>
+                                            <p className="text-sm font-medium capitalize">
+                                              {meal.mealType}: {meal.title}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                              Servings: {meal.servings}
+                                            </p>
+                                          </div>
+
+                                          <div className="text-xs text-muted-foreground sm:text-right">
+                                            <div>{meal.nutrition.calories} cal</div>
+                                            <div>
+                                              P {meal.nutrition.protein}g • C {meal.nutrition.carbs}g •
+                                              F {meal.nutrition.fat}g
+                                            </div>
+                                          </div>
+                                        </div>
+                                    ))}
+                                  </div>
+                                </div>
+                            )}
+                          </div>
+                      )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Meal planning grid */}
+                  {isLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground"/>
+                      </div>
+                  ) : (
+                      <div className="bg-background rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+                        {/* Column headers */}
+                        <div
+                            className="hidden sm:flex items-center gap-3 px-3 py-3 border-b border-border/50 bg-muted/20">
+                          <div className="w-16 flex-shrink-0"/>
+                          {MEALS.map((meal) => {
+                            const {icon: Icon, color, bg} = MEAL_ICONS[meal];
+                            return (
+                                <div key={meal} className="flex-1 flex items-center justify-center gap-2">
+                                  <div className={`${bg} p-1.5 rounded-lg`}>
+                                    <Icon className="h-4 w-4" style={{color}}/>
+                                  </div>
+                                  <span className="font-semibold text-sm capitalize" style={{color}}>{meal}</span>
+                                </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Day rows */}
+                        <div className="divide-y divide-border/30">
                         {weekPlan?.days.map((day, dayIndex) => {
                           const dayDate = new Date(day.date + 'T00:00:00');
                           const today = new Date();

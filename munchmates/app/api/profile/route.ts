@@ -1,11 +1,14 @@
 // app/api/profile/route.ts
-// Endpoint to retrieve and update user profile preferences (cuisines, diets, intolerances)
-// Backed by Postgres via Prisma — data persists across server restarts
-
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+
+const toNullableInt = (value: unknown): number | null => {
+    if (value === "" || value === undefined || value === null) return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+};
 
 export async function GET(req: NextRequest) {
     try {
@@ -15,11 +18,14 @@ export async function GET(req: NextRequest) {
             where: { userId: p.sub },
         });
 
-        // Return stored profile or defaults
         return NextResponse.json({
             favoriteCuisines: profile?.favoriteCuisines ?? "",
             diets: profile?.diets ?? [],
             intolerances: profile?.intolerances ?? [],
+            dailyCalorieGoal: profile?.dailyCalorieGoal ?? null,
+            dailyProteinGoal: profile?.dailyProteinGoal ?? null,
+            dailyCarbGoal: profile?.dailyCarbGoal ?? null,
+            dailyFatGoal: profile?.dailyFatGoal ?? null,
         });
     } catch (error) {
         return handleRouteError(error, "Error in GET /api/profile:");
@@ -35,9 +41,12 @@ export async function POST(req: NextRequest) {
             favoriteCuisines: body.favoriteCuisines ?? "",
             diets: body.diets ?? [],
             intolerances: body.intolerances ?? [],
+            dailyCalorieGoal: toNullableInt(body.dailyCalorieGoal),
+            dailyProteinGoal: toNullableInt(body.dailyProteinGoal),
+            dailyCarbGoal: toNullableInt(body.dailyCarbGoal),
+            dailyFatGoal: toNullableInt(body.dailyFatGoal),
         };
 
-        // Ensure User record exists, then upsert profile
         await prisma.user.upsert({
             where: { id: p.sub },
             update: { name: p.name ?? "", username: p.preferred_username ?? "" },
@@ -56,6 +65,10 @@ export async function POST(req: NextRequest) {
                 favoriteCuisines: profile.favoriteCuisines,
                 diets: profile.diets,
                 intolerances: profile.intolerances,
+                dailyCalorieGoal: profile.dailyCalorieGoal,
+                dailyProteinGoal: profile.dailyProteinGoal,
+                dailyCarbGoal: profile.dailyCarbGoal,
+                dailyFatGoal: profile.dailyFatGoal,
             },
         });
     } catch (error) {
