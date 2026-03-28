@@ -35,6 +35,13 @@ import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/
 import { authedFetch } from "@/lib/authedFetch";
 import { formatAmount } from '@/lib/unit-conversion';
 
+type NutritionInfo = {
+  calories: string;
+  carbs: string;
+  fat: string;
+  protein: string;
+};
+
 type RecipeInfo = {
   id: number;
   title: string;
@@ -60,7 +67,12 @@ type RecipeInfo = {
     amount: number;
     unit: string;
     original: string;
+    aisle?: string;
+    metaInformation?: string[];
   }>;
+  nutrition?: {
+    nutrients?: Array<{ name: string; amount: number; unit: string }>;
+  };
 };
 
 type InstructionStep = {
@@ -216,6 +228,44 @@ function getDietLabels(recipe: RecipeInfo): string[] {
   return labels;
 }
 
+function detectAllergens(recipe: RecipeInfo | null): string[] {
+  if (!recipe) return [];
+
+  const possibleAllergens: { name: string; patterns: RegExp[] }[] = [
+    { name: 'Gluten', patterns: [/\bgluten\b/i, /\bwheat\b/i, /\bbarley\b/i, /\brye\b/i, /\bflour\b/i] },
+    { name: 'Dairy', patterns: [/\b(dairy|milk|cheese|butter|yogurt|cream|casein|whey|custard)\b/i] },
+    { name: 'Egg', patterns: [/\b(egg|mayonnaise|meringue|albumin)\b/i] },
+    { name: 'Peanut', patterns: [/\b(peanut|peanut butter)\b/i] },
+    { name: 'Tree Nut', patterns: [/\b(almond|walnut|pecan|cashew|hazelnut|pistachio|macadamia|tree nut)\b/i] },
+    { name: 'Seafood', patterns: [/\b(fish|salmon|tuna|cod|trout|haddock|anchovy)\b/i] },
+    { name: 'Shellfish', patterns: [/\b(shrimp|prawn|crab|lobster|oyster|mussel|scallop)\b/i] },
+    { name: 'Soy', patterns: [/\b(soy|soybean|tofu|tempeh|edamame|soy sauce)\b/i] },
+    { name: 'Sesame', patterns: [/\b(sesame|tahini)\b/i] },
+    { name: 'Sulfite', patterns: [/\b(sulfite|sulphite)\b/i] },
+  ];
+
+  const ingredientText = (recipe.extendedIngredients || [])
+    .map((ingredient) => [ingredient.name, ingredient.aisle || '', ingredient.original || '', ...(ingredient.metaInformation || [])].join(' '))
+    .join(' ');
+
+  const found = new Set<string>();
+
+  if (recipe.glutenFree === false) found.add('Gluten');
+  if (recipe.dairyFree === false) found.add('Dairy');
+
+  possibleAllergens.forEach((allergen) => {
+    if (allergen.patterns.some((pattern) => pattern.test(ingredientText))) {
+      found.add(allergen.name);
+    }
+  });
+
+  return Array.from(found);
+}
+
+function getAllergenBadgeClass(allergen: string): string {
+  return 'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
+}
+
 // --- Main Component ---
 export default function RecipeDetailPage() {
   const pathname = usePathname();
@@ -231,6 +281,7 @@ export default function RecipeDetailPage() {
   }, [pathname]);
 
   const [recipe, setRecipe] = useState<RecipeInfo | null>(null);
+  const [nutrition, setNutrition] = useState<NutritionInfo | null>(null);
   const [instructions, setInstructions] = useState<InstructionStep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
@@ -249,6 +300,7 @@ export default function RecipeDetailPage() {
 
       setIsLoading(true);
       setError(null);
+      setNutrition(null);
 
       try {
         const customRes = await authedFetch(`/api/recipes/create?id=${recipeId}`);
@@ -293,6 +345,20 @@ export default function RecipeDetailPage() {
             infoData = await infoRes.json();
             setRecipe(infoData);
             setDisplayServings(infoData.servings || 1);
+
+            // Fetch macro nutrition data (per serving) via nutrition widget endpoint
+            try {
+              const nutritionRes = await fetch(`/api/spoonacular/recipes/nutrition?id=${recipeId}`);
+              if (nutritionRes.ok) {
+                const nutritionJson = await nutritionRes.json();
+                setNutrition(nutritionJson);
+              } else {
+                setNutrition(null);
+              }
+            } catch (nutritionErr) {
+              console.warn('Failed to load nutrition data', nutritionErr);
+              setNutrition(null);
+            }
           } else {
             setError("Failed to load recipe information");
           }
@@ -435,6 +501,8 @@ export default function RecipeDetailPage() {
   if (!recipe) return null;
 
   const dietLabels = getDietLabels(recipe);
+  const recipeAllergens = useMemo(() => detectAllergens(recipe), [recipe]);
+
   const hasCuisineOrDish =
     (recipe.cuisines && recipe.cuisines.length > 0) ||
     (recipe.dishTypes && recipe.dishTypes.length > 0);
@@ -572,7 +640,14 @@ export default function RecipeDetailPage() {
                   </button>
                 </div>
                 <button
-                  onClick={() => recipe && cookModal.openModal(recipe, displayServings)}
+                  onClick={() => {
+                    if (!recipe) return;
+                    const cookServings =
+                      typeof displayServings === 'number'
+                        ? displayServings
+                        : Number(displayServings) || 1;
+                    cookModal.openModal(recipe, cookServings);
+                  }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
                 >
                   <ChefHat className="h-3.5 w-3.5" />
@@ -629,6 +704,37 @@ export default function RecipeDetailPage() {
                   <span className="text-muted-foreground">servings</span>
                 </div>
               )}
+            </div>
+
+            {/* Nutrition / allergen hints */}
+            <div className="grid grid-cols-2 gap-2 mb-4 text-xs md:text-sm">
+              <div className="rounded-xl border border-slate-200 bg-white/70 p-3">
+                <h3 className="font-semibold text-xs text-slate-600 uppercase tracking-wider mb-1">Macros (per serving)</h3>
+                {nutrition ? (
+                  <ul className="space-y-1">
+                    <li>Calories: <span className="font-semibold">{nutrition.calories}</span></li>
+                    <li>Carbs: <span className="font-semibold">{nutrition.carbs}</span></li>
+                    <li>Fat: <span className="font-semibold">{nutrition.fat}</span></li>
+                    <li>Protein: <span className="font-semibold">{nutrition.protein}</span></li>
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground">Nutrition details not available.</p>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white/70 p-3">
+                <h3 className="font-semibold text-xs text-slate-600 uppercase tracking-wider mb-1">Allergens</h3>
+                {recipeAllergens.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {recipeAllergens.map((allergen) => (
+                      <span key={allergen} className={getAllergenBadgeClass(allergen)}>
+                        {allergen}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No common allergens detected.</p>
+                )}
+              </div>
             </div>
 
             {/* Diet + cuisine badges */}
