@@ -35,6 +35,49 @@ export interface AggregatedIngredient {
   sourceRecipes: string[];
 }
 
+export interface NutritionMetricProgress {
+  current: number;
+  target: number | null;
+  percent: number | null;
+  remaining: number | null;
+  status: "under" | "met" | "over" | "no-goal";
+};
+
+export interface NutritionDaySummary {
+  date: string;
+  totals: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  goals: {
+    dailyCalorieGoal: number | null;
+    dailyProteinGoal: number | null;
+    dailyCarbGoal: number | null;
+    dailyFatGoal: number | null;
+  };
+  progress: {
+    calories: NutritionMetricProgress;
+    protein: NutritionMetricProgress;
+    carbs: NutritionMetricProgress;
+    fat: NutritionMetricProgress;
+  };
+  meals: {
+    mealType: string;
+    recipeId: number;
+    title: string;
+    servings: number;
+    originalServings: number;
+    nutrition: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+    };
+  }[];
+};
+
 // Format date as YYYY-MM-DD in local timezone (avoids UTC shift issues)
 function formatLocalDateStr(d: Date): string {
   const year = d.getFullYear();

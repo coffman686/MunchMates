@@ -19,31 +19,31 @@
 
 'use client';
 
-import RequireAuth from '@/components/RequireAuth';
-import { ensureToken, getParsedIdToken, getAccessTokenClaims, keycloak } from '@/lib/keycloak';
-import { useEffect, useState } from 'react';
-import { authedFetch } from '@/lib/authedFetch';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import AppSidebar from '@/components/layout/app-sidebar';
-import Link from 'next/link';
-import Image from 'next/image';
-import { Button } from '@/components/ui/button';
 import {
+    AlertTriangle,
     ArrowRight,
-    Utensils,
-    Coffee,
+    Check,
+    Coffee,Droplets,Drumstick, Flame,
+    FolderHeart,
+    Heart,
+    type LucideIcon,
     Moon,
     RefreshCw,
-    Clock,
-    Heart,
-    AlertTriangle,
     ShoppingCart,
-    Check,
-    FolderHeart,
+    Utensils, Wheat,
 } from 'lucide-react';
-import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
 import { DietaryDialog } from '@/components/ingredients/Dietary';
+import AppSidebar from '@/components/layout/app-sidebar';
+import RequireAuth from '@/components/RequireAuth';
+import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
 import RecipeCard from '@/components/recipes/RecipeCard';
+import { Button } from '@/components/ui/button';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { authedFetch } from '@/lib/authedFetch';
+import { ensureToken, getAccessTokenClaims, getParsedIdToken, keycloak } from '@/lib/keycloak';
+import type { NutritionDaySummary, NutritionMetricProgress } from '@/lib/types/meal-plan';
 
 // initialize types
 type IdClaims = { name?: string; preferred_username?: string; email?: string };
@@ -102,6 +102,14 @@ interface PopularRecipe {
     servings?: number;
 }
 
+interface NutritionProgressDial {
+  label: string,
+  unit: string,
+  icon: LucideIcon,
+  color: string,
+  data: NutritionMetricProgress
+}
+
 // helper function to get Monday of the week for a given date
 function getWeekMonday(date: Date): Date {
     const d = new Date(date);
@@ -116,6 +124,16 @@ function formatLocalDateStr(d: Date): string {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+}
+
+function formatTodayStr(): string {
+  return formatLocalDateStr(new Date());
+}
+
+function getCurrentWeekStartStr(): string {
+  const today = new Date();
+  const weekMonday = getWeekMonday(today);
+  return formatLocalDateStr(weekMonday);
 }
 
 // helper function to get greeting based on time of day
@@ -139,6 +157,56 @@ function getDaysUntilExpiry(expiryDate: string): number {
 function formatDate(date: Date): string {
     return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 }
+
+// daily-rotating offset for popular recipes (changes each day)
+function getDailyOffset(): number {
+    const todayStr = formatLocalDateStr(new Date());
+    const saved = localStorage.getItem('popularRecipeOffset');
+    if (saved) {
+        try {
+            const { date, offset } = JSON.parse(saved);
+            if (date === todayStr) return offset;
+        } catch { /* ignore bad data */ }
+    }
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+    return (dayOfYear * 8) % 200;
+}
+
+// Helper to make data for the progress dials
+const makeNutritionDials = (data: NutritionDaySummary): NutritionProgressDial[] => {
+  return [
+    {
+      label: "Calories",
+      unit: "kcal",
+      icon: Flame,
+      color: "#FF9F0A",
+      data: data.progress.calories,
+    },
+    {
+      label: "Protein",
+      unit: "g",
+      icon: Drumstick,
+      color: "#30D158",
+      data: data.progress.protein,
+    },
+    {
+      label: "Carbs",
+      unit: "g",
+      icon: Wheat,
+      color: "#5E5CE6",
+      data: data.progress.carbs,
+    },
+    {
+      label: "Fat",
+      unit: "g",
+      icon: Droplets,
+      color: "#AE38AE",
+      data: data.progress.fat,
+    },
+  ]
+}
+
+
 
 // generic motivational tips for dashboard
 const cookingTips = [
@@ -175,6 +243,9 @@ export default function Dashboard() {
     const [dietModal, setDietModal] = useState(false);
     const [diets, setDiets] = useState<string[]>([]);
     const [intolerances, setIntolerances] = useState<string[]>([]);
+
+    // nutrition widget
+    const [nutritionProgress, setNutritionProgress] = useState<NutritionProgressDial[]>([]);
 
     // Open dietary preferences modal if uninitialized
     useEffect(() => {
@@ -342,6 +413,31 @@ export default function Dashboard() {
         return () => { cancelled = true; };
     }, []);
 
+
+    useEffect(() => {
+      const loadNutrition = async () => {
+        const res = await authedFetch(`/api/meal-plan/nutrition-summary?weekStart=${getCurrentWeekStartStr()}`);
+
+        if (!res.ok) {
+          setNutritionProgress([]);
+          return;
+        }
+
+        const nutritionData = await res.json();
+        const days: NutritionDaySummary[] = nutritionData.days ?? [];
+        const todayStr = formatTodayStr();
+        const today: NutritionDaySummary = days.find((day) => day.date === todayStr) ?? days[0] ?? null;
+
+        if (!today) {
+          setNutritionProgress([]);
+          return;
+        }
+
+        setNutritionProgress(makeNutritionDials(today));
+      }
+      loadNutrition();
+    }, []);
+
     // toggle save/unsave a recipe
     const toggleSaveRecipe = async (recipeId: number, title: string, image?: string) => {
         const isSaved = savedRecipeIds.has(recipeId);
@@ -364,22 +460,8 @@ export default function Dashboard() {
 
     const collectionDialog = useAddToCollection();
 
-    // daily-rotating offset for popular recipes (changes each day)
-    function getDailyOffset(): number {
-        const todayStr = formatLocalDateStr(new Date());
-        const saved = localStorage.getItem('popularRecipeOffset');
-        if (saved) {
-            try {
-                const { date, offset } = JSON.parse(saved);
-                if (date === todayStr) return offset;
-            } catch { /* ignore bad data */ }
-        }
-        const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
-        return (dayOfYear * 8) % 200;
-    }
-
     // fetch popular recipes from Spoonacular
-    const fetchPopularRecipes = async (offset?: number) => {
+    const fetchPopularRecipes = useCallback(async (offset?: number) => {
         setPopularLoading(true);
         try {
             const o = offset ?? getDailyOffset();
@@ -397,12 +479,12 @@ export default function Dashboard() {
         } finally {
             setPopularLoading(false);
         }
-    };
+    }, []);
 
     // load popular recipes on mount
     useEffect(() => {
         fetchPopularRecipes();
-    }, []);
+    }, [fetchPopularRecipes]);
 
     const mealSlots: { key: 'breakfast' | 'lunch' | 'dinner'; label: string; icon: typeof Coffee; color: string; bg: string }[] = [
         { key: 'breakfast', label: 'Breakfast', icon: Coffee, color: '#FF9F0A', bg: 'rgba(255,159,10,0.12)' },
@@ -457,8 +539,8 @@ export default function Dashboard() {
                             </div>
 
                             {/* ── Today's Meals ── */}
-                            <div className={`${card} p-1.5`}>
-                                <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border/50">
+                            <div className={`${card} p-1.5 grid grid-cols-1 lg:grid-cols-2`}>
+                                <div className="grid grid-cols-1 divide-y md:divide-y-0 md:divide-x divide-border/50">
                                     {mealSlots.map(({ key, label, icon: Icon, color, bg }) => {
                                         const meal = hasMeals ? todayPlan?.[key] : undefined;
                                         const content = (
@@ -484,7 +566,66 @@ export default function Dashboard() {
                                         );
                                     })}
                                 </div>
-                            </div>
+
+
+                                {/* -- nutrition dials -- */}
+                                <div className="p-6">
+                                  <h2 className="text-center text-xl font-bold mb-2">
+                                    Nutrition Summary
+                                  </h2>
+                                  <div className="flex flex-row justify-center gap-4">
+                                    {nutritionProgress.map((dial) => {
+                                        const current = dial.data.current;
+                                        const target = dial.data.target ?? "?";
+                                        const color = dial.color;
+                                        const Icon = dial.icon;
+
+                                        const percent = Math.min(dial.data.percent ?? 0.0, 100.0);
+                                        const radius = 40;
+                                        const circum = 2 * Math.PI * radius;
+                                        const circumPercent = circum - (percent / 100) * circum;
+                                        const stroke = dial.data.status === "over" ? "6" : "4"
+
+                                        return (
+                                          <div key={dial.label} className="flex flex-col items-center transition-all duration-300ms">
+                                            <div className="relative opacity-100">
+                                              <svg className="w-25 h-25 -rotate-90">
+                                                <title>{dial.label} Dial</title>
+                                                <circle
+                                                  cx="50" cy="50" r={radius}
+                                                  strokeWidth="4"
+                                                  stroke={stroke}
+                                                  className="text-muted-foreground/10"
+                                                  fill="transparent"
+                                                />
+                                                <circle
+                                                  cx="50" cy="50" r={radius}
+                                                  stroke={color}
+                                                  strokeWidth={stroke}
+                                                  strokeLinecap="round"
+                                                  fill="transparent"
+                                                  strokeDasharray={circum}
+                                                  strokeDashoffset={circumPercent}
+                                                  className="transition-[stroke-dashoffset] duration-1s"
+                                                />
+                                              </svg>
+
+                                              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                <Icon className="mb-1" style={{ color: dial.color }} />
+                                                <span className="font-bold">{percent}%</span>
+                                              </div>
+                                            </div>
+
+                                            <div className="text-center">
+                                              <p className="font-bold">{dial.label}</p>
+                                              <p className="text-xs text-muted-foreground">{current} / {target} {dial.unit}</p>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+                              </div>
 
                             {/* ── Popular Recipes ── */}
                             <div>
