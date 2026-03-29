@@ -18,6 +18,7 @@ import {
     logout,
 } from "@/lib/keycloak";
 import { LogOut, User, ShieldAlert, Trash2, Save, Leaf, AlertTriangle, Globe } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 type AccessTokenClaims = {
     sub?: string;
@@ -90,6 +91,10 @@ const ProfilePage = () => {
     const [intolerances, setIntolerances] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [dailyCalorieGoal, setDailyCalorieGoal] = useState("");
+    const [dailyProteinGoal, setDailyProteinGoal] = useState("");
+    const [dailyCarbGoal, setDailyCarbGoal] = useState("");
+    const [dailyFatGoal, setDailyFatGoal] = useState("");
 
     // Load diets/intolerances from localStorage on mount
     useEffect(() => {
@@ -137,6 +142,10 @@ const ProfilePage = () => {
                 }
                 if (data.diets) setDiets(data.diets);
                 if (data.intolerances) setIntolerances(data.intolerances);
+                setDailyCalorieGoal(data.dailyCalorieGoal?.toString() ?? "");
+                setDailyProteinGoal(data.dailyProteinGoal?.toString() ?? "");
+                setDailyCarbGoal(data.dailyCarbGoal?.toString() ?? "");
+                setDailyFatGoal(data.dailyFatGoal?.toString() ?? "");
             } catch (err) {
                 console.error("Error loading profile", err);
             }
@@ -162,6 +171,10 @@ const ProfilePage = () => {
                     favoriteCuisines: favoriteCuisines.join(", "),
                     diets,
                     intolerances,
+                    dailyCalorieGoal,
+                    dailyProteinGoal,
+                    dailyCarbGoal,
+                    dailyFatGoal,
                 }),
             });
             if (!res.ok) { setSaving(false); return; }
@@ -272,7 +285,76 @@ const ProfilePage = () => {
                                         />
                                     </div>
                                 </div>
+                                {/* Dietary Goals */}
+                                <div className={card}>
+                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                                        <div
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg"
+                                            style={{ backgroundColor: "rgba(10,132,255,0.1)" }}
+                                        >
+                                            <Leaf className="h-4 w-4" style={{ color: "#0A84FF" }} />
+                                        </div>
+                                        <h2 className="text-[15px] font-semibold">Dietary Goals</h2>
+                                    </div>
 
+                                    <div className="px-5 pb-4 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[12px] font-medium text-muted-foreground">
+                                                Daily Calories
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={dailyCalorieGoal}
+                                                onChange={(e) => setDailyCalorieGoal(e.target.value)}
+                                                placeholder="2000"
+                                                className="h-10 rounded-xl"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[12px] font-medium text-muted-foreground">
+                                                Protein (g)
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={dailyProteinGoal}
+                                                onChange={(e) => setDailyProteinGoal(e.target.value)}
+                                                placeholder="150"
+                                                className="h-10 rounded-xl"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[12px] font-medium text-muted-foreground">
+                                                Carbs (g)
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={dailyCarbGoal}
+                                                onChange={(e) => setDailyCarbGoal(e.target.value)}
+                                                placeholder="200"
+                                                className="h-10 rounded-xl"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[12px] font-medium text-muted-foreground">
+                                                Fat (g)
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={dailyFatGoal}
+                                                onChange={(e) => setDailyFatGoal(e.target.value)}
+                                                placeholder="70"
+                                                className="h-10 rounded-xl"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                                 {/* Save */}
                                 <Button type="submit" className="w-full h-11 rounded-xl text-[14px] font-semibold" disabled={saving}>
                                     <Save className="h-4 w-4 mr-2" />
