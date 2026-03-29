@@ -16,40 +16,29 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent } from '@dnd-kit/core';
-import { Button } from '@/components/ui/button';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import AppSidebar from '@/components/layout/app-sidebar';
+import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent } from '@dnd-kit/core';
 import {
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  ShoppingCart,
-  Loader2,
   Coffee,
-  Utensils,
+  Loader2,
   Moon,
+  ShoppingCart,
   Sparkles,
-  ChevronDown,
-  Check,
+  Utensils,
 } from 'lucide-react';
-import RequireAuth from '@/components/RequireAuth';
-import { ensureToken } from '@/lib/keycloak';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import AppSidebar from '@/components/layout/app-sidebar';
+import DraggableRecipeCard from '@/components/meal-planner/DraggableRecipeCard';
 import MealSlot from '@/components/meal-planner/MealSlot';
 import RecipePickerDialog from '@/components/meal-planner/RecipePickerDialog';
-import DraggableRecipeCard from '@/components/meal-planner/DraggableRecipeCard';
-import {
-  WeeklyMealPlan,
-  DayPlan,
-  MealPlanEntry,
-  MealType,
-  createEmptyWeekPlan,
-  getWeekMonday,
-  generateMealEntryId,
-} from '@/lib/types/meal-plan';
-import { aggregateIngredients } from '@/lib/ingredient-aggregator';
+import RequireAuth from '@/components/RequireAuth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -57,7 +46,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { aggregateIngredients } from '@/lib/ingredient-aggregator';
+import { ensureToken } from '@/lib/keycloak';
+import {
+  createEmptyWeekPlan,
+  type DayPlan,
+  generateMealEntryId,
+  getWeekMonday,
+  type MealPlanEntry,
+  type MealType,
+  type NutritionDaySummary,
+  type NutritionMetricProgress,
+  type WeeklyMealPlan,
+} from '@/lib/types/meal-plan';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner'];
@@ -73,49 +75,6 @@ const DIET_OPTIONS = [
   'Ovo-Vegetarian', 'Vegan', 'Pescetarian', 'Paleo', 'Primal',
   'Low FODMAP', 'Whole30',
 ];
-
-type NutritionMetricProgress = {
-  current: number;
-  target: number | null;
-  percent: number | null;
-  remaining: number | null;
-  status: "under" | "met" | "over" | "no-goal";
-};
-
-type NutritionDaySummary = {
-  date: string;
-  totals: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-  };
-  goals: {
-    dailyCalorieGoal: number | null;
-    dailyProteinGoal: number | null;
-    dailyCarbGoal: number | null;
-    dailyFatGoal: number | null;
-  };
-  progress: {
-    calories: NutritionMetricProgress;
-    protein: NutritionMetricProgress;
-    carbs: NutritionMetricProgress;
-    fat: NutritionMetricProgress;
-  };
-  meals: {
-    mealType: string;
-    recipeId: number;
-    title: string;
-    servings: number;
-    originalServings: number;
-    nutrition: {
-      calories: number;
-      protein: number;
-      carbs: number;
-      fat: number;
-    };
-  }[];
-};
 
 function clampPercent(value: number | null): number {
   if (value === null || Number.isNaN(value)) return 0;
@@ -285,6 +244,7 @@ const MealPlanner = () => {
 
     loadMealPlan();
   }, [weekStartStr]);
+
   // dietary goals nutrition load
   useEffect(() => {
     const loadNutritionSummary = async () => {
@@ -561,6 +521,7 @@ const MealPlanner = () => {
       nutritionDays.find((day) => day.date === selectedNutritionDate) ??
       nutritionDays[0] ??
       null;
+
   //Helper for nutrition info
   const renderProgressLabel = (metric: NutritionMetricProgress, unit = "") => {
     if (metric.target === null) {

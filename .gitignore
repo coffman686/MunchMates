@@ -8,3 +8,4 @@ docs/architecture/*.out
 docs/architecture/figures/*.mmd
 docs/architecture/figures/*.png
 docs/architecture/figures/mermaid-config.json
+/munchmates/bun.lock
