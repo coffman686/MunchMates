@@ -439,6 +439,7 @@ button.pf-c-button.pf-m-control {
     color: var(--muted-foreground);
     border-radius: var(--radius-sm) !important;
     transition: color 0.15s ease !important;
+    --pf-c-button--after--BorderColor: transparent !important;
 }
 
 .pf-c-form-control__utilities button:hover,
@@ -460,6 +461,8 @@ button.pf-c-button.pf-m-control:hover {
 .pf-c-input-group {
     display: flex;
     width: 100%;
+    background: transparent !important;
+    align-items: baseline;
 }
 
 .pf-c-input-group input {
