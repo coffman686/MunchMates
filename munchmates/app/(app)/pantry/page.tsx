@@ -50,95 +50,92 @@ interface PantryItem {
 
 type RetryAction = () => void | Promise<void>;
 
-const categories = [
-    'Grains & Flour',
-    'Sweeteners',
-    'Dairy & Eggs',
-    'Meat & Poultry',
-    'Seafood',
-    'Fruits',
-    'Vegetables',
-    'Herbs & Spices',
-    'Oils & Vinegar',
-    'Canned Goods',
-    'Baking Supplies',
-    'Beverages',
-    'Snacks',
+const DEFAULT_CATEGORIES = [
+    'Produce',
+    'Dairy',
+    'Meat & Seafood',
+    'Pantry',
+    'Bakery',
     'Frozen',
-    'Other'
+    'Spices & Seasonings',
+    'Canned Goods',
+    'Pasta & Grains',
+    'Condiments',
+    'Oils & Vinegars',
+    'Baking',
+    'Beverages',
+    'Other',
 ];
 
 const COMMON_UNITS = ['', 'cups', 'tbsp', 'tsp', 'oz', 'lbs', 'g', 'kg', 'ml', 'L', 'pieces'];
 
 const categoryEmoji: Record<string, string> = {
-    'Grains & Flour': '🌾',
-    'Sweeteners': '🍯',
-    'Dairy & Eggs': '🥛',
+    'Produce': '🥬',
     'Dairy': '🥛',
-    'Meat & Poultry': '🥩',
-    'Meat': '🥩',
-    'Seafood': '🐟',
-    'Fruits': '🍎',
-    'Vegetables': '🥬',
-    'Produce': '🥕',
-    'Herbs & Spices': '🌿',
-    'Herbs': '🌿',
-    'Oils & Vinegar': '🫒',
-    'Canned Goods': '🥫',
-    'Baking Supplies': '🧁',
-    'Beverages': '🥤',
-    'Snacks': '🍿',
+    'Meat & Seafood': '🥩',
+    'Pantry': '🏠',
+    'Bakery': '🍞',
     'Frozen': '🧊',
+    'Spices & Seasonings': '🌶️',
+    'Canned Goods': '🥫',
+    'Pasta & Grains': '🍝',
+    'Condiments': '🫙',
+    'Oils & Vinegars': '🫒',
+    'Baking': '🧁',
+    'Beverages': '🥤',
     'Other': '📦',
 };
 
-// Map legacy category names to canonical names
+// Map old pantry-only categories into the grocery category set.
 const legacyCategoryMap: Record<string, string> = {
-    'Dairy': 'Dairy & Eggs',
-    'Meat': 'Meat & Poultry',
-    'Herbs': 'Herbs & Spices',
-    'Produce': 'Vegetables',
+    'Grains & Flour': 'Pasta & Grains',
+    'Sweeteners': 'Baking',
+    'Dairy & Eggs': 'Dairy',
+    'Meat & Poultry': 'Meat & Seafood',
+    'Meat': 'Meat & Seafood',
+    'Seafood': 'Meat & Seafood',
+    'Fruits': 'Produce',
+    'Vegetables': 'Produce',
+    'Herbs & Spices': 'Spices & Seasonings',
+    'Herbs': 'Spices & Seasonings',
+    'Oils & Vinegar': 'Oils & Vinegars',
+    'Baking Supplies': 'Baking',
+    'Snacks': 'Other',
 };
 
 const normalizeCategory = (cat: string): string => legacyCategoryMap[cat] || cat;
 
 const categoryBorder: Record<string, string> = {
-    'Grains & Flour': 'border-l-amber-300',
-    'Sweeteners': 'border-l-yellow-300',
-    'Dairy & Eggs': 'border-l-blue-300',
-    'Meat & Poultry': 'border-l-red-300',
-    'Seafood': 'border-l-cyan-300',
-    'Fruits': 'border-l-pink-300',
-    'Vegetables': 'border-l-green-300',
-    'Herbs & Spices': 'border-l-emerald-300',
-    'Oils & Vinegar': 'border-l-lime-300',
+    'Produce': 'border-l-emerald-300',
+    'Dairy': 'border-l-blue-300',
+    'Meat & Seafood': 'border-l-red-300',
+    'Pantry': 'border-l-stone-300',
+    'Bakery': 'border-l-amber-300',
+    'Frozen': 'border-l-cyan-300',
+    'Spices & Seasonings': 'border-l-orange-300',
     'Canned Goods': 'border-l-orange-300',
-    'Baking Supplies': 'border-l-fuchsia-300',
+    'Pasta & Grains': 'border-l-yellow-300',
+    'Condiments': 'border-l-purple-300',
+    'Oils & Vinegars': 'border-l-lime-300',
+    'Baking': 'border-l-fuchsia-300',
     'Beverages': 'border-l-sky-300',
-    'Snacks': 'border-l-violet-300',
-    'Frozen': 'border-l-slate-300',
     'Other': 'border-l-gray-300',
 };
 
 const categoryColor: Record<string, string> = {
-    'Grains & Flour': 'bg-amber-50 dark:bg-amber-950/30',
-    'Sweeteners': 'bg-yellow-50 dark:bg-yellow-950/30',
-    'Dairy & Eggs': 'bg-blue-50 dark:bg-blue-950/30',
-    'Dairy': 'bg-blue-50 dark:bg-blue-950/30',
-    'Meat & Poultry': 'bg-red-50 dark:bg-red-950/30',
-    'Meat': 'bg-red-50 dark:bg-red-950/30',
-    'Seafood': 'bg-cyan-50 dark:bg-cyan-950/30',
-    'Fruits': 'bg-pink-50 dark:bg-pink-950/30',
-    'Vegetables': 'bg-green-50 dark:bg-green-950/30',
     'Produce': 'bg-green-50 dark:bg-green-950/30',
-    'Herbs & Spices': 'bg-emerald-50 dark:bg-emerald-950/30',
-    'Herbs': 'bg-emerald-50 dark:bg-emerald-950/30',
-    'Oils & Vinegar': 'bg-lime-50 dark:bg-lime-950/30',
+    'Dairy': 'bg-blue-50 dark:bg-blue-950/30',
+    'Meat & Seafood': 'bg-red-50 dark:bg-red-950/30',
+    'Pantry': 'bg-stone-50 dark:bg-stone-950/30',
+    'Bakery': 'bg-amber-50 dark:bg-amber-950/30',
+    'Frozen': 'bg-cyan-50 dark:bg-cyan-950/30',
+    'Spices & Seasonings': 'bg-orange-50 dark:bg-orange-950/30',
     'Canned Goods': 'bg-orange-50 dark:bg-orange-950/30',
-    'Baking Supplies': 'bg-fuchsia-50 dark:bg-fuchsia-950/30',
+    'Pasta & Grains': 'bg-yellow-50 dark:bg-yellow-950/30',
+    'Condiments': 'bg-purple-50 dark:bg-purple-950/30',
+    'Oils & Vinegars': 'bg-lime-50 dark:bg-lime-950/30',
+    'Baking': 'bg-fuchsia-50 dark:bg-fuchsia-950/30',
     'Beverages': 'bg-sky-50 dark:bg-sky-950/30',
-    'Snacks': 'bg-violet-50 dark:bg-violet-950/30',
-    'Frozen': 'bg-slate-50 dark:bg-slate-950/30',
     'Other': 'bg-gray-50 dark:bg-gray-950/30',
 };
 
@@ -155,11 +152,12 @@ const Pantry = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [apiError, setApiError] = useState<{ message: string; isValidation: boolean; onRetry?: RetryAction } | null>(null);
+    const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
 
     const [itemName, setItemName] = useState('');
     const [itemAmount, setItemAmount] = useState('');
     const [itemUnit, setItemUnit] = useState('');
-    const [itemCategory, setItemCategory] = useState(categories[0]);
+    const [itemCategory, setItemCategory] = useState(DEFAULT_CATEGORIES[0]);
     const [expiryDate, setExpiryDate] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTab, setSelectedTab] = useState('All');
@@ -168,7 +166,7 @@ const Pantry = () => {
     const [editName, setEditName] = useState('');
     const [editAmount, setEditAmount] = useState('');
     const [editUnit, setEditUnit] = useState('');
-    const [editCategory, setEditCategory] = useState(categories[0]);
+    const [editCategory, setEditCategory] = useState(DEFAULT_CATEGORIES[0]);
     const [editExpiry, setEditExpiry] = useState('');
 
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -199,10 +197,34 @@ const Pantry = () => {
         }
     }, []);
 
+    const fetchCategories = useCallback(async () => {
+        try {
+            const res = await authedFetch('/api/grocery/categories');
+            await assertOk(res, 'Failed to fetch categories');
+            const data = await res.json();
+            const nextCategories = ((data.categories || []) as Array<{ name: string }>)
+                .map((category) => category.name);
+            setCategories(nextCategories.length > 0 ? nextCategories : DEFAULT_CATEGORIES);
+        } catch (error) {
+            setUiError(error, 'Failed to fetch categories', fetchCategories);
+        }
+    }, []);
+
     useEffect(() => {
         clearError();
-        fetchItems();
-    }, [fetchItems]);
+        void fetchItems();
+        void fetchCategories();
+    }, [fetchItems, fetchCategories]);
+
+    useEffect(() => {
+        const fallbackCategory = categories[0] || DEFAULT_CATEGORIES[0];
+        if (!categories.includes(itemCategory)) {
+            setItemCategory(fallbackCategory);
+        }
+        if (editingId !== null && !categories.includes(editCategory)) {
+            setEditCategory(fallbackCategory);
+        }
+    }, [categories, itemCategory, editCategory, editingId]);
 
     const beginEdit = (item: PantryItem) => {
         setEditingId(item.id);
@@ -218,7 +240,7 @@ const Pantry = () => {
         setEditName('');
         setEditAmount('');
         setEditUnit('');
-        setEditCategory(categories[0]);
+        setEditCategory(categories[0] || DEFAULT_CATEGORIES[0]);
         setEditExpiry('');
     };
 
@@ -307,7 +329,7 @@ const Pantry = () => {
             setItemAmount('');
             setItemUnit('');
             setExpiryDate('');
-            setItemCategory(categories[0]);
+            setItemCategory(categories[0] || DEFAULT_CATEGORIES[0]);
         } catch (error) {
             setUiError(error, 'Failed to add pantry item', addItem);
         } finally {
