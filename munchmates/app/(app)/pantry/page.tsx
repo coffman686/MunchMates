@@ -329,6 +329,21 @@ const Pantry = () => {
         }
     };
 
+    const clearAll = async () => {
+        clearError();
+        try {
+            const res = await authedFetch('/api/pantry', {
+                method: 'DELETE',
+            });
+
+            await assertOk(res, 'Failed to clear pantry');
+            setItems([]);
+            cancelEdit();
+        } catch (error) {
+            setUiError(error, 'Failed to clear all pantry items', clearAll);
+        }
+    };
+
 
     const getDaysUntilExpiry = (expiryDate: string): number => {
         // Parse both as local dates to avoid UTC offset issues
@@ -575,6 +590,18 @@ const Pantry = () => {
                                                 <p className="text-[12px] text-muted-foreground/70 mt-1">Try adjusting your search or filter</p>
                                             </div>
                                         )}
+
+                                        <div className="flex items-center justify-end gap-3 px-4 sm:px-5 py-3 border-t border-border/30">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={clearAll}
+                                                className="text-xs h-7 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50"
+                                            >
+                                                <Trash2 className="h-3 w-3 mr-1" />
+                                                Clear All
+                                            </Button>
+                                        </div>
                                     </div>
                                 ) : (
                                     // Empty state
