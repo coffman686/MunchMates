@@ -22,7 +22,10 @@ const DEFAULT_CATEGORIES = [
     "Oils & Vinegars",
     "Baking",
     "Beverages",
+    "Other",
 ];
+
+const OTHER_CATEGORY = "Other";
 
 // GET /api/grocery/categories — List user's categories (return defaults if none exist)
 export async function GET(req: NextRequest) {
@@ -49,6 +52,22 @@ export async function GET(req: NextRequest) {
                     name,
                     sortOrder: index,
                 })),
+            });
+
+            categories = await prisma.groceryCategory.findMany({
+                where: { userId: p.sub },
+                orderBy: { sortOrder: "asc" },
+            });
+        }
+
+        if (!categories.some((cat) => cat.name === OTHER_CATEGORY)) {
+            const maxSortOrder = categories.at(-1)?.sortOrder ?? -1;
+            await prisma.groceryCategory.create({
+                data: {
+                    userId: p.sub,
+                    name: OTHER_CATEGORY,
+                    sortOrder: maxSortOrder + 1,
+                },
             });
 
             categories = await prisma.groceryCategory.findMany({
@@ -132,6 +151,10 @@ export async function DELETE(req: NextRequest) {
             return errorResponse(400, "Missing required param: name");
         }
 
+        if (name === OTHER_CATEGORY) {
+            return errorResponse(400, "The Other category cannot be deleted");
+        }
+
         // Find the category to delete
         const categoryToDelete = await prisma.groceryCategory.findFirst({
             where: { userId: p.sub, name },
@@ -141,19 +164,35 @@ export async function DELETE(req: NextRequest) {
             return errorResponse(404, "Category not found");
         }
 
-        // Find remaining categories (excluding the one being deleted)
-        const remainingCategories = await prisma.groceryCategory.findMany({
-            where: { userId: p.sub, name: { not: name } },
-            orderBy: { sortOrder: "asc" },
+        const otherCategory = await prisma.groceryCategory.findFirst({
+            where: { userId: p.sub, name: OTHER_CATEGORY },
         });
 
-        // Determine fallback category
-        const fallbackCategory = remainingCategories[0]?.name ?? "Uncategorized";
+        if (!otherCategory) {
+            const maxSort = await prisma.groceryCategory.findFirst({
+                where: { userId: p.sub },
+                orderBy: { sortOrder: "desc" },
+                select: { sortOrder: true },
+            });
 
-        // Reassign items in deleted category to fallback
+            await prisma.groceryCategory.create({
+                data: {
+                    userId: p.sub,
+                    name: OTHER_CATEGORY,
+                    sortOrder: (maxSort?.sortOrder ?? -1) + 1,
+                },
+            });
+        }
+
+        // Reassign items in deleted category to Other across grocery + pantry
         await prisma.groceryItem.updateMany({
             where: { userId: p.sub, category: name },
-            data: { category: fallbackCategory },
+            data: { category: OTHER_CATEGORY },
+        });
+
+        await prisma.pantryItem.updateMany({
+            where: { userId: p.sub, category: name },
+            data: { category: OTHER_CATEGORY },
         });
 
         // Delete the category
@@ -164,7 +203,7 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({
             ok: true,
             message: "Category deleted",
-            reassignedTo: fallbackCategory,
+            reassignedTo: OTHER_CATEGORY,
         });
     } catch (error) {
         return handleRouteError(error, "Error in DELETE /api/grocery/categories:");

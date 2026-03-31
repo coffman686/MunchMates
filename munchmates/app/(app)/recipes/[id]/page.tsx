@@ -427,6 +427,7 @@ export default function RecipeDetailPage() {
           body: JSON.stringify({
             recipeId: recipe.id,
             recipeName: recipe.title,
+            recipeImage: recipe.image,
           }),
         });
         setIsSaved(true);
