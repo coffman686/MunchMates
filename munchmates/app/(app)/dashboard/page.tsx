@@ -107,7 +107,7 @@ interface NutritionProgressDial {
   unit: string,
   icon: LucideIcon,
   color: string,
-  data: NutritionMetricProgress
+  data: NutritionMetricProgress | null
 }
 
 // helper function to get Monday of the week for a given date
@@ -173,35 +173,35 @@ function getDailyOffset(): number {
 }
 
 // Helper to make data for the progress dials
-const makeNutritionDials = (data: NutritionDaySummary): NutritionProgressDial[] => {
+const makeNutritionDials = (data: NutritionDaySummary | null): NutritionProgressDial[] => {
   return [
     {
       label: "Calories",
       unit: "kcal",
       icon: Flame,
       color: "#FF9F0A",
-      data: data.progress.calories,
+      data: data?.progress.calories ?? null,
     },
     {
       label: "Protein",
       unit: "g",
       icon: Drumstick,
       color: "#30D158",
-      data: data.progress.protein,
+      data: data?.progress.protein ?? null,
     },
     {
       label: "Carbs",
       unit: "g",
       icon: Wheat,
       color: "#5E5CE6",
-      data: data.progress.carbs,
+      data: data?.progress.carbs ?? null,
     },
     {
       label: "Fat",
       unit: "g",
       icon: Droplets,
       color: "#AE38AE",
-      data: data.progress.fat,
+      data: data?.progress.fat ?? null,
     },
   ]
 }
@@ -245,7 +245,7 @@ export default function Dashboard() {
     const [intolerances, setIntolerances] = useState<string[]>([]);
 
     // nutrition widget
-    const [nutritionProgress, setNutritionProgress] = useState<NutritionProgressDial[]>([]);
+    const [nutritionProgress, setNutritionProgress] = useState<NutritionProgressDial[]>(makeNutritionDials(null));
 
     // Open dietary preferences modal if uninitialized
     useEffect(() => {
@@ -417,9 +417,10 @@ export default function Dashboard() {
     useEffect(() => {
       const loadNutrition = async () => {
         const res = await authedFetch(`/api/meal-plan/nutrition-summary?weekStart=${getCurrentWeekStartStr()}`);
+        const empty = () => makeNutritionDials(null);
 
         if (!res.ok) {
-          setNutritionProgress([]);
+          setNutritionProgress(empty());
           return;
         }
 
@@ -429,7 +430,7 @@ export default function Dashboard() {
         const today: NutritionDaySummary = days.find((day) => day.date === todayStr) ?? days[0] ?? null;
 
         if (!today) {
-          setNutritionProgress([]);
+          setNutritionProgress(empty());
           return;
         }
 
@@ -574,17 +575,17 @@ export default function Dashboard() {
                                     Nutrition Summary
                                   </h2>
                                   <div className="flex flex-row justify-center gap-4">
-                                    {nutritionProgress.map((dial) => {
-                                        const current = dial.data.current;
-                                        const target = dial.data.target ?? "?";
+                                    {nutritionProgress.map((dial: NutritionProgressDial) => {
+                                        const current = dial.data?.current ?? 0;
+                                        const target = dial.data?.target;
                                         const color = dial.color;
                                         const Icon = dial.icon;
 
-                                        const percent = Math.min(dial.data.percent ?? 0.0, 100.0);
-                                        const radius = 40;
-                                        const circum = 2 * Math.PI * radius;
-                                        const circumPercent = circum - (percent / 100) * circum;
-                                        const stroke = dial.data.status === "over" ? "6" : "4"
+                                        const percent = Math.min(dial.data?.percent ?? 0.0, 100.0);
+                                        const dialRadius = 40;
+                                        const dialCircum = 2 * Math.PI * dialRadius;
+                                        const dialCircumPercent = dialCircum - (percent / 100) * dialCircum;
+                                        const strokeWidth = dial.data?.status === "over" ? 6 : 4
 
                                         return (
                                           <div key={dial.label} className="flex flex-col items-center transition-all duration-300ms">
@@ -592,20 +593,20 @@ export default function Dashboard() {
                                               <svg className="w-25 h-25 -rotate-90">
                                                 <title>{dial.label} Dial</title>
                                                 <circle
-                                                  cx="50" cy="50" r={radius}
-                                                  strokeWidth="4"
-                                                  stroke={stroke}
+                                                  cx="50" cy="50" r={dialRadius}
+                                                  strokeWidth={strokeWidth}
+                                                  stroke="currentColor"
                                                   className="text-muted-foreground/10"
                                                   fill="transparent"
                                                 />
                                                 <circle
-                                                  cx="50" cy="50" r={radius}
+                                                  cx="50" cy="50" r={dialRadius}
+                                                  strokeWidth={strokeWidth}
                                                   stroke={color}
-                                                  strokeWidth={stroke}
                                                   strokeLinecap="round"
                                                   fill="transparent"
-                                                  strokeDasharray={circum}
-                                                  strokeDashoffset={circumPercent}
+                                                  strokeDasharray={dialCircum}
+                                                  strokeDashoffset={dialCircumPercent}
                                                   className="transition-[stroke-dashoffset] duration-1s"
                                                 />
                                               </svg>
@@ -618,7 +619,7 @@ export default function Dashboard() {
 
                                             <div className="text-center">
                                               <p className="font-bold">{dial.label}</p>
-                                              <p className="text-xs text-muted-foreground">{current} / {target} {dial.unit}</p>
+                                              <p className="text-xs text-muted-foreground">{current} {target ? `/ ${target}` : "" } {dial.unit}</p>
                                             </div>
                                           </div>
                                         );
