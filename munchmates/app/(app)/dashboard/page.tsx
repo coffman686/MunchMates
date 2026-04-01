@@ -540,8 +540,8 @@ export default function Dashboard() {
                             </div>
 
                             {/* ── Today's Meals ── */}
-                            <div className={`${card} p-1.5 grid grid-cols-1 lg:grid-cols-2`}>
-                                <div className="grid grid-cols-1 divide-y md:divide-y-0 md:divide-x divide-border/50">
+                            <div className={`${card} p-1.5 grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/50`}>
+                                <div className="pr-2 grid grid-cols-1 divide-y divide-border/50">
                                     {mealSlots.map(({ key, label, icon: Icon, color, bg }) => {
                                         const meal = hasMeals ? todayPlan?.[key] : undefined;
                                         const content = (
@@ -581,10 +581,10 @@ export default function Dashboard() {
                                         const color = dial.color;
                                         const Icon = dial.icon;
 
-                                        const percent = Math.min(dial.data?.percent ?? 0.0, 100.0);
+                                        const percent = dial.data?.percent ?? 0.0;
                                         const dialRadius = 40;
                                         const dialCircum = 2 * Math.PI * dialRadius;
-                                        const dialCircumPercent = dialCircum - (percent / 100) * dialCircum;
+                                        const dialCircumPercent = Math.max(0, dialCircum - (percent / 100) * dialCircum);
                                         const strokeWidth = dial.data?.status === "over" ? 6 : 4
 
                                         return (
