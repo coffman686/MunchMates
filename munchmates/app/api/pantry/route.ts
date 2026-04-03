@@ -9,6 +9,7 @@ import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { normalize } from "@/lib/normalize";
 import { parseQuantity } from "@/lib/parseQuantity";
+import { rateLimiter } from "@/lib/rateLimiter";
 
 function formatItemResponse(item: {
     id: number;
@@ -48,6 +49,12 @@ function formatItemResponse(item: {
 // GET /api/pantry — List all pantry items for user
 export async function GET(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
         // Ensure User record exists
@@ -75,6 +82,12 @@ export async function GET(req: NextRequest) {
 // POST /api/pantry — Add new pantry item
 export async function POST(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const body = await req.json();
 
@@ -169,6 +182,13 @@ export async function POST(req: NextRequest) {
 // PUT /api/pantry — Update existing item (by id in body)
 export async function PUT(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
+
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const body = await req.json();
 
@@ -243,6 +263,12 @@ export async function PUT(req: NextRequest) {
 // DELETE /api/pantry?id= — Remove item by id
 export async function DELETE(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const { searchParams } = new URL(req.url);
         const id = searchParams.get("id");

@@ -12,10 +12,17 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
+import { rateLimiter } from '@/lib/rateLimiter';
 
 // GET - List all collections the user is a member of
 export async function GET(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
 
@@ -37,6 +44,12 @@ export async function GET(req: NextRequest) {
 // POST - Create a new shared collection
 export async function POST(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = String(p.sub);
         const preferredUsername = typeof p.preferred_username === "string" ? p.preferred_username.trim() : "";
@@ -93,6 +106,12 @@ export async function POST(req: NextRequest) {
 // DELETE - Delete a collection (owner only)
 export async function DELETE(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
 

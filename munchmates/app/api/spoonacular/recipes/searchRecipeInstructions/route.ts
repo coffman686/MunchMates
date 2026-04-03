@@ -9,8 +9,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { getRecipeInstructions } from '@/lib/spoonacular';
+import { rateLimiter } from '@/lib/rateLimiter';
 
 export async function GET(request: NextRequest) {
+    // Rate limiting by IP address
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "anonymous";
+    const { success } = await rateLimiter.limit(ip);
+    if (!success) {
+        return errorResponse(429, "Too Many Requests");
+    }
     const searchParams = request.nextUrl.searchParams;
     const idParam = searchParams.get('id');
     if (!idParam) {

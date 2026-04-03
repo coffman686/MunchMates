@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { rateLimiter } from '@/lib/rateLimiter';
 
 // Default categories seeded on first GET if user has none
 const DEFAULT_CATEGORIES = [
@@ -27,6 +28,13 @@ const DEFAULT_CATEGORIES = [
 // GET /api/grocery/categories — List user's categories (return defaults if none exist)
 export async function GET(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
+
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
         // Ensure User record exists
@@ -74,6 +82,13 @@ export async function GET(req: NextRequest) {
 // POST /api/grocery/categories — Add new category
 export async function POST(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
+
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const body = await req.json();
 
@@ -124,6 +139,13 @@ export async function POST(req: NextRequest) {
 // DELETE /api/grocery/categories?name= — Remove category (reassign items to first remaining)
 export async function DELETE(req: NextRequest) {
     try {
+        // Rate limiting by IP address
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
+        const { success } = await rateLimiter.limit(ip);
+        if (!success) {
+            return errorResponse(429, "Too Many Requests");
+        }
+
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const { searchParams } = new URL(req.url);
         const name = searchParams.get("name");
