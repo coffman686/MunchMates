@@ -1,4 +1,4 @@
-// file: recipes/info/route.ts
+// file: recipes/searchRecipeInstructions/route.ts
 // GET endpoint to fetch recipe instructions
 // Inputs: spooncular recipe ID
 // Output:
