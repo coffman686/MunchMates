@@ -2,7 +2,6 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { type NextProxy, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/apiErrors";
-import { keycloak, waitForInit } from "./lib/keycloak";
 import { verifyBearer } from "@/lib/verifyToken";
 
 const redis = Redis.fromEnv();
