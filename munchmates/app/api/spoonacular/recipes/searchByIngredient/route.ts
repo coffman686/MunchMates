@@ -11,14 +11,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { searchRecipes } from '@/lib/spoonacular';
-import { rateLimiter } from '@/lib/rateLimiter';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(request: NextRequest) {
-    // Rate limiting by IP address  
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "anonymous";
-    const { success } = await rateLimiter.limit(ip);
-    if (!success) {
-        return errorResponse(429, "Too Many Requests");
+    // Verify bearer token for authentication
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    try {
+        await verifyBearer(authHeader ?? undefined);
+    } catch (err) {
+        return errorResponse(401, "Unauthorized");
     }
     const searchParams = request.nextUrl.searchParams;
     const ingredients = searchParams.get('ingredients') ?? undefined;

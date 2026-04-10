@@ -7,7 +7,6 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { getRecipeNutrition } from "@/lib/spoonacular";
-import { rateLimiter } from "@/lib/rateLimiter";
 import {
     emptyNutrition,
     addNutrition,
@@ -28,13 +27,6 @@ type MealRow = {
 
 export async function GET(req: NextRequest) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
-
         const payload = await verifyBearer(req.headers.get("authorization") || undefined);
 
         const weekStart = req.nextUrl.searchParams.get("weekStart");

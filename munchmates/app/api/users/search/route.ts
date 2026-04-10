@@ -5,17 +5,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyBearer } from "@/lib/verifyToken";
-import { handleRouteError, errorResponse } from "@/lib/apiErrors";
-import { rateLimiter } from "@/lib/rateLimiter";
+import { handleRouteError } from "@/lib/apiErrors";
 
 // GET /api/users/search?q=<query> — Search users by name or username
 export async function GET(req: NextRequest) {
     try {
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
         const query = req.nextUrl.searchParams.get("q")?.trim();

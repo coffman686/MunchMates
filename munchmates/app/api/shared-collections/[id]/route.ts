@@ -12,7 +12,6 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
-import { rateLimiter } from '@/lib/rateLimiter';
 
 type RouteContext = {
     params: Promise<{ id: string }>;
@@ -21,13 +20,6 @@ type RouteContext = {
 // GET - Get a specific collection by ID
 export async function GET(req: NextRequest, context: RouteContext) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
-
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
         const { id: collectionId } = await context.params;
@@ -58,12 +50,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
 // PUT - Update collection (name, description) or add/remove recipes
 export async function PUT(req: NextRequest, context: RouteContext) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
         const userName = p.preferred_username || p.name || 'Unknown User';
@@ -185,12 +171,6 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 // DELETE - Remove user from collection or delete collection
 export async function DELETE(req: NextRequest, context: RouteContext) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
         const { id: collectionId } = await context.params;

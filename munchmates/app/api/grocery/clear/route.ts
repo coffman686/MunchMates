@@ -6,20 +6,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
-import { rateLimiter } from '@/lib/rateLimiter';
 
 // POST /api/grocery/clear — Bulk operations
 // Body: { action: "completed" } — Clear all completed items
 // Body: { action: "all" } — Clear entire list
 export async function POST(req: NextRequest) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
-
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const body = await req.json();
 

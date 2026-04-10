@@ -3,17 +3,18 @@
 // Accepts timeFrame, targetCalories, diet, and exclude params
 
 import { NextRequest, NextResponse } from 'next/server';
-import { handleRouteError, errorResponse } from '@/lib/apiErrors';
+import { errorResponse, handleRouteError } from '@/lib/apiErrors';
 import { generateMealPlan } from '@/lib/spoonacular';
-import { rateLimiter } from '@/lib/rateLimiter';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(req: NextRequest) {
-  // Rate limiting by IP address
-  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-  const { success } = await rateLimiter.limit(ip);
-  if (!success) {
-      return errorResponse(429, "Too Many Requests");
-  }
+  // Verify bearer token for authentication
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    try {
+      await verifyBearer(authHeader ?? undefined);
+    } catch (err) {
+      return errorResponse(401, "Unauthorized");
+    }
   const params = req.nextUrl.searchParams;
   const timeFrame = (params.get('timeFrame') as 'day' | 'week') || 'week';
   const targetCalories = params.get('targetCalories');

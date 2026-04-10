@@ -12,16 +12,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
-import { rateLimiter } from '@/lib/rateLimiter';
 
 export async function POST(req: NextRequest) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
 
@@ -163,12 +156,6 @@ function mapToRecipeInfo(r: {
 // Single-recipe mode is used by the detail page when recipeId >= 100000
 export async function GET(req: NextRequest) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
         const singleId = req.nextUrl.searchParams.get("id");
 
         // Single recipe lookup by ID — used by detail views for custom recipes
@@ -221,12 +208,6 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
     try {
-        // Rate limiting by IP address
-        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-        const { success } = await rateLimiter.limit(ip);
-        if (!success) {
-            return errorResponse(429, "Too Many Requests");
-        }
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
         const userId = p.sub;
 

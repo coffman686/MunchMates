@@ -10,14 +10,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { getRecipeInformation } from '@/lib/spoonacular';
 import { normalize } from '@/lib/normalize';
-import { rateLimiter } from '@/lib/rateLimiter';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(req: NextRequest) {
-  // Rate limiting by IP address
-  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
-  const { success } = await rateLimiter.limit(ip);
-  if (!success) {
-      return errorResponse(429, "Too Many Requests");
+  // Verify bearer token for authentication
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  try {
+    await verifyBearer(authHeader ?? undefined);
+  } catch (err) {
+    return errorResponse(401, "Unauthorized");
   }
   const recipeId = req.nextUrl.searchParams.get('id');
 
