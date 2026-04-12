@@ -46,3 +46,4 @@ next-env.d.ts
 
 # keycloak dev realm json
 munchmates/login/keycloak/import/dev-realm.json
+.idea/

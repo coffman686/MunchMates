@@ -1,3 +1,4 @@
+// api/recipes/saved/route.ts
 // Saved Recipes API Route (POST / GET / DELETE)
 // Provides per-user saved-recipe management using Bearer-token authentication.
 // POST   → Saves a new recipe for the authenticated user (id, name, optional image).

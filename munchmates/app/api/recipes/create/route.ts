@@ -1,3 +1,4 @@
+// api/recipes/create/route.ts
 // Custom Recipe API Route (POST / GET / DELETE)
 // Allows authenticated users to create, retrieve, and delete their own custom recipes.
 // POST   → Validates required fields (title, ingredients, instructions) and stores in Postgres.
