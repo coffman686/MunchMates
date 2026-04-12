@@ -240,7 +240,7 @@ export async function PUT(req: NextRequest) {
     }
 }
 
-// DELETE /api/pantry?id= — Remove item by id
+// DELETE /api/pantry?id= — Remove item by id, or clear all items when no id is provided
 export async function DELETE(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
@@ -248,7 +248,11 @@ export async function DELETE(req: NextRequest) {
         const id = searchParams.get("id");
 
         if (!id) {
-            return errorResponse(400, "Missing required param: id");
+            await prisma.pantryItem.deleteMany({
+                where: { userId: p.sub },
+            });
+
+            return NextResponse.json({ ok: true, message: "Pantry cleared" });
         }
 
         const itemId = parseInt(id, 10);
