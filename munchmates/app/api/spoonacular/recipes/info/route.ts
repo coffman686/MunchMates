@@ -10,8 +10,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { getRecipeInformation } from '@/lib/spoonacular';
 import { normalize } from '@/lib/normalize';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(req: NextRequest) {
+  // Verify bearer token for authentication
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  try {
+    await verifyBearer(authHeader ?? undefined);
+  } catch (err) {
+    return errorResponse(401, "Unauthorized");
+  }
   const recipeId = req.nextUrl.searchParams.get('id');
 
   if (!recipeId) {

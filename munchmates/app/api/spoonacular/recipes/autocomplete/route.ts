@@ -5,8 +5,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from '@/lib/apiErrors';
 import { autocompleteRecipes } from '@/lib/spoonacular';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(req: NextRequest) {
+  // Verify bearer token for authentication
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  try {
+    await verifyBearer(authHeader ?? undefined);
+  } catch (err) {
+    return errorResponse(401, "Unauthorized");
+  }
   const query = req.nextUrl.searchParams.get('query');
   const numberParam = req.nextUrl.searchParams.get('number');
   const number = numberParam ? parseInt(numberParam, 10) : 7;

@@ -11,8 +11,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { searchRecipes } from '@/lib/spoonacular';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(request: NextRequest) {
+    // Verify bearer token for authentication
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    try {
+        await verifyBearer(authHeader ?? undefined);
+    } catch (err) {
+        return errorResponse(401, "Unauthorized");
+    }
     const searchParams = request.nextUrl.searchParams;
     const ingredients = searchParams.get('ingredients') ?? undefined;
     const query = searchParams.get('query') ?? undefined;

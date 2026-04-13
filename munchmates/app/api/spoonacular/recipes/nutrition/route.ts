@@ -2,8 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from '@/lib/apiErrors';
 import { getRecipeNutrition } from '@/lib/spoonacular';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(request: NextRequest) {
+  // Verify bearer token for authentication
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  try {
+    await verifyBearer(authHeader ?? undefined);
+  } catch (err) {
+    return errorResponse(401, "Unauthorized");
+  }
   const recipeIdParam = request.nextUrl.searchParams.get('id');
 
   if (!recipeIdParam) {

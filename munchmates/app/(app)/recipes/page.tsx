@@ -93,7 +93,7 @@ const Recipes = () => {
         if (intolerances) params.set('intolerances', intolerances);
 
         try {
-            const response = await fetch(`/api/spoonacular/recipes/searchByIngredient?${params.toString()}`);
+            const response = await authedFetch(`/api/spoonacular/recipes/searchByIngredient?${params.toString()}`);
             const data = await response.json();
             setRecipes(data.results || []);
         } catch (error) {
