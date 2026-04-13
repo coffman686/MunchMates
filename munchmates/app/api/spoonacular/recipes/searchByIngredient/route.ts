@@ -1,4 +1,4 @@
-// searchByIngredients/route.ts
+// api/recipes/searchByIngredient/route.ts
 // Endpoint for searching recipes by ingredients or text query
 // Inputs:
 // - ingredients: CS list of ingredients the recipe should contain

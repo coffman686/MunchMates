@@ -1,4 +1,4 @@
-// file: app/api/profile/route.ts
+// file: app/api/me/route.ts
 // Fetches user profile and preferences data
 // GET:
 // - Verifies user authorization

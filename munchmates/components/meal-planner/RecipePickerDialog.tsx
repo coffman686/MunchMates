@@ -40,6 +40,13 @@ interface SavedRecipe {
   savedAt: string;
 }
 
+const getSavedRecipeImage = (recipe: SavedRecipe) => {
+  if (recipe.recipeImage) return recipe.recipeImage;
+  return recipe.recipeId < 100000
+    ? `https://img.spoonacular.com/recipes/${recipe.recipeId}-636x393.jpg`
+    : '';
+};
+
 type TabType = 'search' | 'saved';
 
 interface RecipePickerDialogProps {
@@ -218,7 +225,7 @@ export default function RecipePickerDialog({
       const recipe: Recipe = {
         id: recipeInfo.id,
         title: recipeInfo.title,
-        image: recipeInfo.image || savedRecipe.recipeImage || '',
+        image: recipeInfo.image || getSavedRecipeImage(savedRecipe),
         score: recipeInfo.spoonacularScore || 0,
         servings: recipeInfo.servings || 1,
         readyInMinutes: recipeInfo.readyInMinutes || 30,
@@ -505,9 +512,9 @@ export default function RecipePickerDialog({
                     onClick={() => handleSavedRecipeClick(recipe)}
                   >
                     <div className="h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
-                      {recipe.recipeImage ? (
+                      {getSavedRecipeImage(recipe) ? (
                         <img
-                          src={recipe.recipeImage}
+                          src={getSavedRecipeImage(recipe)}
                           alt={recipe.recipeName}
                           className="h-full w-full object-cover"
                         />

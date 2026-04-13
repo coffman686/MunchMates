@@ -30,6 +30,13 @@ type SavedRecipe = {
     savedAt?: string;
 };
 
+const getSavedRecipeImage = (recipe: SavedRecipe) => {
+    if (recipe.recipeImage) return recipe.recipeImage;
+    return recipe.recipeId < 100000
+        ? `https://img.spoonacular.com/recipes/${recipe.recipeId}-636x393.jpg`
+        : undefined;
+};
+
 let cachedSavedRecipes: SavedRecipe[] | null = null;
 
 const SavedRecipesPage = () => {
@@ -99,7 +106,7 @@ const SavedRecipesPage = () => {
                             key={recipe.recipeId}
                             id={recipe.recipeId}
                             title={recipe.recipeName}
-                            image={recipe.recipeImage}
+                            image={getSavedRecipeImage(recipe)}
                         >
                             <button
                                 type="button"
