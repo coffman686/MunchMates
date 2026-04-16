@@ -2,22 +2,24 @@
 // Provides typed wrappers around Spoonacular endpoints for
 // recipes, ingredients, nutrition, meal planning, and image URL
 // helpers, along with a shared fetch handler that injects the API key.
-import { getOrSetJsonSWR, stableKey } from './cache';
-const SPOONACULAR_API_BASE_URL = 'https://api.spoonacular.com';
+import { getOrSetJsonSWR, stableKey } from "./cache";
+
+const SPOONACULAR_API_BASE_URL = "https://api.spoonacular.com";
 
 function ttlFor(endpoint: string): number | null {
   // return null = do not cache
-  if (endpoint.startsWith('/recipes/autocomplete')) return 60 * 30; //30 min
-  if (endpoint.startsWith('/recipes/complexSearch')) return 60 * 30; //30 min
-  if (endpoint.startsWith('/recipes/findByIngredients')) return 60 * 30; //30 min
-  if (endpoint.startsWith('/food/ingredients/search')) return 60 * 60 * 24 * 30; //30 days
-  if (endpoint.includes('/food/ingredients/') && endpoint.includes('/information')) return 60 * 60 * 24 * 30; //30 days
-  if (endpoint.includes('/information')) return 60 * 60 * 24 * 7;    //7 days (general recipe info)
-  if (endpoint.includes('/nutritionWidget.json')) return 60 * 60 * 24 * 7; //7 days
-  if (endpoint.includes('/similar')) return 60 * 60 * 24; //1 day
-  if (endpoint.includes('/analyzedInstructions')) return 60 * 60 * 24 * 7; //7 days
-  if (endpoint.startsWith('/mealplanner/generate')) return 60 * 10; //10 min
-  if (endpoint.startsWith('/recipes/random')) return null; //random should be random
+  if (endpoint.startsWith("/recipes/autocomplete")) return 60 * 30; //30 min
+  if (endpoint.startsWith("/recipes/complexSearch")) return 60 * 30; //30 min
+  if (endpoint.startsWith("/recipes/findByIngredients")) return 60 * 30; //30 min
+  if (endpoint.startsWith("/food/ingredients/search")) return 60 * 60 * 24 * 30; //30 days
+  if (endpoint.includes("/food/ingredients/") && endpoint.includes("/information"))
+    return 60 * 60 * 24 * 30; //30 days
+  if (endpoint.includes("/information")) return 60 * 60 * 24 * 7; //7 days (general recipe info)
+  if (endpoint.includes("/nutritionWidget.json")) return 60 * 60 * 24 * 7; //7 days
+  if (endpoint.includes("/similar")) return 60 * 60 * 24; //1 day
+  if (endpoint.includes("/analyzedInstructions")) return 60 * 60 * 24 * 7; //7 days
+  if (endpoint.startsWith("/mealplanner/generate")) return 60 * 10; //10 min
+  if (endpoint.startsWith("/recipes/random")) return null; //random should be random
   return 60 * 60; //fallback 1 hour
 }
 
@@ -42,7 +44,7 @@ function swrWindowsFor(endpoint: string): { freshFor: number; staleFor: number }
 function getApiKey(): string {
   const apiKey = process.env.SPOONACULAR_API_KEY;
   if (!apiKey) {
-    throw new Error('SPOONACULAR_API_KEY is not set in environment variables');
+    throw new Error("SPOONACULAR_API_KEY is not set in environment variables");
   }
   return apiKey;
 }
@@ -50,10 +52,9 @@ function getApiKey(): string {
 // base fetch function
 async function spoonacularFetch<T>(
   endpoint: string,
-  params: Record<string, string | number | boolean> = {}
+  params: Record<string, string | number | boolean> = {},
 ): Promise<T> {
   const apiKey = getApiKey();
-  const ttl = ttlFor(endpoint);
   const fetcher = async (): Promise<T> => {
     const urlParams = new URLSearchParams({
       ...params,
@@ -63,17 +64,15 @@ async function spoonacularFetch<T>(
     const url = `${SPOONACULAR_API_BASE_URL}${endpoint}?${urlParams.toString()}`;
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-          `Spoonacular API error (${response.status}): ${errorText}`
-      );
+      throw new Error(`Spoonacular API error (${response.status}): ${errorText}`);
     }
 
     return response.json();
@@ -81,10 +80,9 @@ async function spoonacularFetch<T>(
   const swr = swrWindowsFor(endpoint);
   if (!swr) return fetcher();
 
-  const cacheKey = stableKey('spoonacular', endpoint, params);
+  const cacheKey = stableKey("spoonacular", endpoint, params);
   return getOrSetJsonSWR<T>(cacheKey, swr.freshFor, swr.staleFor, fetcher);
 }
-
 
 // type definitions //
 
@@ -191,7 +189,6 @@ export interface AutocompleteSuggestion {
 
 // recipe endpoints //
 
-
 //search for recipes by query
 //@param query - search query (e.g., "pasta", "chicken")
 //@param options - additional search parameters
@@ -209,9 +206,9 @@ export async function searchRecipes(
     includeIngredients?: string; // Comma-separated list of ingredients to include
     sort?: string;
     fillIngredients?: boolean;
-  } = {}
+  } = {},
 ): Promise<SearchRecipesResult> {
-  return spoonacularFetch<SearchRecipesResult>('/recipes/complexSearch', {
+  return spoonacularFetch<SearchRecipesResult>("/recipes/complexSearch", {
     query,
     ...options,
   });
@@ -219,9 +216,9 @@ export async function searchRecipes(
 // autocomplete recipe names
 export async function autocompleteRecipes(
   query: string,
-  number: number = 7
+  number: number = 7,
 ): Promise<AutocompleteSuggestion[]> {
-  return spoonacularFetch<AutocompleteSuggestion[]>('/recipes/autocomplete', {
+  return spoonacularFetch<AutocompleteSuggestion[]>("/recipes/autocomplete", {
     query,
     number,
   });
@@ -229,45 +226,32 @@ export async function autocompleteRecipes(
 
 // get recipe instructions
 // @param recipeId - the Spoonacular recipe ID
-export async function getRecipeInstructions(
-  recipeId: number
-): Promise<any> {
-  return spoonacularFetch<any>(
-    `/recipes/${recipeId}/analyzedInstructions`,
-    {}
-  );
+export async function getRecipeInstructions(recipeId: number): Promise<any> {
+  return spoonacularFetch<any>(`/recipes/${recipeId}/analyzedInstructions`, {});
 }
 
 // get detailed information about a specific recipe
 // @param recipeId - the Spoonacular recipe ID
 
-export async function getRecipeInformation(
-  recipeId: number
-): Promise<RecipeInformation> {
-  return spoonacularFetch<RecipeInformation>(
-    `/recipes/${recipeId}/information`,
-    {}
-  );
+export async function getRecipeInformation(recipeId: number): Promise<RecipeInformation> {
+  return spoonacularFetch<RecipeInformation>(`/recipes/${recipeId}/information`, {});
 }
-
 
 // get random recipes
 // @param options - filter options
 
-export async function getRandomRecipes(options: {
-  number?: number; // Number of recipes (default: 1, max: 100)
-  tags?: string; // Comma-separated tags (e.g., "vegetarian,dessert")
-} = {}): Promise<{ recipes: RecipeInformation[] }> {
-  return spoonacularFetch<{ recipes: RecipeInformation[] }>(
-    '/recipes/random',
-    options
-  );
+export async function getRandomRecipes(
+  options: {
+    number?: number; // Number of recipes (default: 1, max: 100)
+    tags?: string; // Comma-separated tags (e.g., "vegetarian,dessert")
+  } = {},
+): Promise<{ recipes: RecipeInformation[] }> {
+  return spoonacularFetch<{ recipes: RecipeInformation[] }>("/recipes/random", options);
 }
 
-
- // search recipes by ingredients
- // @param ingredients - comma-separated list of ingredients (e.g., "apples,flour,sugar")
- // @param options - additional options
+// search recipes by ingredients
+// @param ingredients - comma-separated list of ingredients (e.g., "apples,flour,sugar")
+// @param options - additional options
 
 export async function searchRecipesByIngredients(
   ingredients: string,
@@ -275,23 +259,19 @@ export async function searchRecipesByIngredients(
     number?: number;
     ranking?: 1 | 2; // 1 = maximize used ingredients, 2 = minimize missing ingredients
     ignorePantry?: boolean;
-  } = {}
+  } = {},
 ): Promise<Recipe[]> {
-  return spoonacularFetch<Recipe[]>('/recipes/findByIngredients', {
+  return spoonacularFetch<Recipe[]>("/recipes/findByIngredients", {
     ingredients,
     ...options,
   });
 }
 
-
 // Get similar recipes to a given recipe
 // @param recipeId - The Spoonacular recipe ID
 // @param number - Number of similar recipes to return (default: 10)
 
-export async function getSimilarRecipes(
-  recipeId: number,
-  number: number = 10
-): Promise<Recipe[]> {
+export async function getSimilarRecipes(recipeId: number, number: number = 10): Promise<Recipe[]> {
   return spoonacularFetch<Recipe[]>(`/recipes/${recipeId}/similar`, {
     number,
   });
@@ -309,15 +289,12 @@ export async function searchIngredients(
     number?: number;
     metaInformation?: boolean;
     intolerances?: string;
-  } = {}
+  } = {},
 ): Promise<IngredientSearchResult> {
-  return spoonacularFetch<IngredientSearchResult>(
-    '/food/ingredients/search',
-    {
-      query,
-      ...options,
-    }
-  );
+  return spoonacularFetch<IngredientSearchResult>("/food/ingredients/search", {
+    query,
+    ...options,
+  });
 }
 
 // get information about a specific ingredient
@@ -328,12 +305,12 @@ export async function searchIngredients(
 export async function getIngredientInformation(
   ingredientId: number,
   amount: number = 1,
-  unit: string = 'serving'
+  unit: string = "serving",
 ): Promise<Ingredient> {
-  return spoonacularFetch<Ingredient>(
-    `/food/ingredients/${ingredientId}/information`,
-    { amount, unit }
-  );
+  return spoonacularFetch<Ingredient>(`/food/ingredients/${ingredientId}/information`, {
+    amount,
+    unit,
+  });
 }
 
 // meal planning endpoints //
@@ -341,14 +318,16 @@ export async function getIngredientInformation(
 // generate a meal plan for a specific timeframe
 //@param options - meal plan parameters
 
-export async function generateMealPlan(options: {
-  timeFrame?: 'day' | 'week';
-  targetCalories?: number;
-  diet?: string;
-  exclude?: string;
-} = {}): Promise<any> {
-  return spoonacularFetch<any>('/mealplanner/generate', {
-    timeFrame: 'day',
+export async function generateMealPlan(
+  options: {
+    timeFrame?: "day" | "week";
+    targetCalories?: number;
+    diet?: string;
+    exclude?: string;
+  } = {},
+): Promise<any> {
+  return spoonacularFetch<any>("/mealplanner/generate", {
+    timeFrame: "day",
     ...options,
   });
 }
@@ -358,13 +337,8 @@ export async function generateMealPlan(options: {
 //get nutrition information for a recipe
 //@param recipeId - the Spoonacular recipe ID
 
-export async function getRecipeNutrition(
-  recipeId: number
-): Promise<NutritionInfo> {
-  return spoonacularFetch<NutritionInfo>(
-    `/recipes/${recipeId}/nutritionWidget.json`,
-    {}
-  );
+export async function getRecipeNutrition(recipeId: number): Promise<NutritionInfo> {
+  return spoonacularFetch<NutritionInfo>(`/recipes/${recipeId}/nutritionWidget.json`, {});
 }
 
 // utility funcs //
@@ -375,7 +349,7 @@ export async function getRecipeNutrition(
 
 export function getRecipeImageUrl(
   filename: string,
-  size: '90x90' | '240x150' | '312x231' | '480x360' | '556x370' | '636x393' = '312x231'
+  size: "90x90" | "240x150" | "312x231" | "480x360" | "556x370" | "636x393" = "312x231",
 ): string {
   return `https://spoonacular.com/recipeImages/${filename.replace(/-\d+x\d+\./, `-${size}.`)}`;
 }
@@ -386,7 +360,7 @@ export function getRecipeImageUrl(
 
 export function getIngredientImageUrl(
   filename: string,
-  size: '100x100' | '250x250' = '100x100'
+  size: "100x100" | "250x250" = "100x100",
 ): string {
   return `https://spoonacular.com/cdn/ingredients_${size}/${filename}`;
 }

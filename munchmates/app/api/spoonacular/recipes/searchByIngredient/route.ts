@@ -8,60 +8,59 @@
 // - diets: the user's diet
 // - intolerances: the user's intolerances and allergens
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { searchRecipes } from '@/lib/spoonacular';
-import { verifyBearer } from '@/lib/verifyToken';
+import { searchRecipes } from "@/lib/spoonacular";
+import { verifyBearer } from "@/lib/verifyToken";
 
 export async function GET(request: NextRequest) {
-    // Verify bearer token for authentication
-    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
-    try {
-        await verifyBearer(authHeader ?? undefined);
-    } catch (err) {
-        return errorResponse(401, "Unauthorized");
-    }
-    const searchParams = request.nextUrl.searchParams;
-    const ingredients = searchParams.get('ingredients') ?? undefined;
-    const query = searchParams.get('query') ?? undefined;
-    const cuisine = searchParams.get('cuisine') ?? undefined
-    const dishType = searchParams.get('dishType') ?? undefined
-    const diet = searchParams.get("diet") ?? undefined;
-    const intolerances = searchParams.get("intolerances") ?? undefined;
-    if (!ingredients && !query) {
-        return errorResponse(400, 'Missing ingredients or query parameter');
-    }
-    try {
-        const recipes = await searchRecipes(query ?? '', {
-            includeIngredients: ingredients,
-            addRecipeInformation: true,
-            cuisine: cuisine,
-            type: dishType,
-            diet: diet,
-            intolerances: intolerances,
-            number: 100,
-            sort: query ? '' : (ingredients ? 'max-used-ingredients' : 'popularity'),
-            fillIngredients: true,
-        });
-        const results = recipes.results.map((recipe) => ({
-            id: recipe.id,
-            title: recipe.title,
-            image: recipe.image,
-            score: recipe.spoonacularScore ? Math.round(recipe.spoonacularScore) : 0,
-            servings: recipe.servings,
-            readyInMinutes: recipe.readyInMinutes,
-            cuisines: recipe.cuisines,
-            dishTypes: recipe.dishTypes,
-            usedIngredients: (recipe.usedIngredients || []).map((i: any) => i.name),
-            missedIngredientCount: (recipe.missedIngredients || []).length,
-        }));
-        // Sort by most used ingredients first, then by popularity score as tiebreaker
-        results.sort((a, b) =>
-            b.usedIngredients.length - a.usedIngredients.length
-            || b.score - a.score
-        );
-        return NextResponse.json({ results });
-    } catch (error) {
-        return handleRouteError(error, 'Failed to fetch recipes by ingredient');
-    }
+  // Verify bearer token for authentication
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  try {
+    await verifyBearer(authHeader ?? undefined);
+  } catch (_err) {
+    return errorResponse(401, "Unauthorized");
+  }
+  const searchParams = request.nextUrl.searchParams;
+  const ingredients = searchParams.get("ingredients") ?? undefined;
+  const query = searchParams.get("query") ?? undefined;
+  const cuisine = searchParams.get("cuisine") ?? undefined;
+  const dishType = searchParams.get("dishType") ?? undefined;
+  const diet = searchParams.get("diet") ?? undefined;
+  const intolerances = searchParams.get("intolerances") ?? undefined;
+  if (!ingredients && !query) {
+    return errorResponse(400, "Missing ingredients or query parameter");
+  }
+  try {
+    const recipes = await searchRecipes(query ?? "", {
+      includeIngredients: ingredients,
+      addRecipeInformation: true,
+      cuisine: cuisine,
+      type: dishType,
+      diet: diet,
+      intolerances: intolerances,
+      number: 100,
+      sort: query ? "" : ingredients ? "max-used-ingredients" : "popularity",
+      fillIngredients: true,
+    });
+    const results = recipes.results.map((recipe) => ({
+      id: recipe.id,
+      title: recipe.title,
+      image: recipe.image,
+      score: recipe.spoonacularScore ? Math.round(recipe.spoonacularScore) : 0,
+      servings: recipe.servings,
+      readyInMinutes: recipe.readyInMinutes,
+      cuisines: recipe.cuisines,
+      dishTypes: recipe.dishTypes,
+      usedIngredients: (recipe.usedIngredients || []).map((i: { name: string }) => i.name),
+      missedIngredientCount: (recipe.missedIngredients || []).length,
+    }));
+    // Sort by most used ingredients first, then by popularity score as tiebreaker
+    results.sort(
+      (a, b) => b.usedIngredients.length - a.usedIngredients.length || b.score - a.score,
+    );
+    return NextResponse.json({ results });
+  } catch (error) {
+    return handleRouteError(error, "Failed to fetch recipes by ingredient");
+  }
 }

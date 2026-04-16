@@ -1,3 +1,6 @@
+// lib/__tests__/grocery-consolidation.tests.ts
+// tests combining and deduplicating grocery list items
+
 import { describe, expect, it } from "vitest";
 import {
   consolidateIngredients,
@@ -8,10 +11,34 @@ import {
 describe("consolidateIngredients", () => {
   it("aggregates duplicate ingredients from multiple recipes into a unified grocery list", () => {
     const result = consolidateIngredients([
-      { name: "Milk", amount: 1, unit: "cup", category: "Dairy", sourceRecipe: "Pancakes" },
-      { name: "Milk", amount: 8, unit: "tbsp", category: "Dairy", sourceRecipe: "Biscuits" },
-      { name: "Eggs", amount: 6, unit: "", category: "Dairy", sourceRecipe: "Quiche" },
-      { name: "Eggs", amount: 1, unit: "dozen", category: "Dairy", sourceRecipe: "Cake" },
+      {
+        name: "Milk",
+        amount: 1,
+        unit: "cup",
+        category: "Dairy",
+        sourceRecipe: "Pancakes",
+      },
+      {
+        name: "Milk",
+        amount: 8,
+        unit: "tbsp",
+        category: "Dairy",
+        sourceRecipe: "Biscuits",
+      },
+      {
+        name: "Eggs",
+        amount: 6,
+        unit: "",
+        category: "Dairy",
+        sourceRecipe: "Quiche",
+      },
+      {
+        name: "Eggs",
+        amount: 1,
+        unit: "dozen",
+        category: "Dairy",
+        sourceRecipe: "Cake",
+      },
     ]);
 
     expect(result).toEqual([
@@ -34,10 +61,34 @@ describe("consolidateIngredients", () => {
 
   it("preserves separate buckets for incompatible or unknown units and drops invalid amounts", () => {
     const result = consolidateIngredients([
-      { name: "Tomatoes", amount: 2, unit: "pieces", category: "Produce", sourceRecipe: "Salad" },
-      { name: "Tomatoes", amount: 400, unit: "g", category: "Produce", sourceRecipe: "Sauce" },
-      { name: "Tomatoes", amount: 0, unit: "cup", category: "Produce", sourceRecipe: "Ignore Me" },
-      { name: "Tomatoes", amount: -1, unit: "cup", category: "Produce", sourceRecipe: "Ignore Me Too" },
+      {
+        name: "Tomatoes",
+        amount: 2,
+        unit: "pieces",
+        category: "Produce",
+        sourceRecipe: "Salad",
+      },
+      {
+        name: "Tomatoes",
+        amount: 400,
+        unit: "g",
+        category: "Produce",
+        sourceRecipe: "Sauce",
+      },
+      {
+        name: "Tomatoes",
+        amount: 0,
+        unit: "cup",
+        category: "Produce",
+        sourceRecipe: "Ignore Me",
+      },
+      {
+        name: "Tomatoes",
+        amount: -1,
+        unit: "cup",
+        category: "Produce",
+        sourceRecipe: "Ignore Me Too",
+      },
     ]);
 
     expect(result).toEqual([

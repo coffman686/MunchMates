@@ -1,29 +1,28 @@
 // app/api/account/route.ts
 // this routing directly concerns how we will handle a user's account deletion,
-// and verifying the token we are given. Also helps to show error codes if keycloak
-// acts up
-import { NextRequest, NextResponse } from "next/server";
+// and verifying the token we are given. Also helps to show error codes
+// if keycloak acts up
+
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { verifyBearer } from "@/lib/verifyToken";
 import { deleteUserById } from "@/lib/keycloakAdmin";
+import { verifyBearer } from "@/lib/verifyToken";
 
 export async function DELETE(req: NextRequest) {
-    try {
-        const claims = await verifyBearer(
-            req.headers.get("authorization") || undefined
-        );
+  try {
+    const claims = await verifyBearer(req.headers.get("authorization") || undefined);
 
-        if (!claims?.sub) {
-            return errorResponse(400, "No user id (sub) in token");
-        }
-
-        // If you want to also remove local profile data, you can move the
-        // `profiles` Map into a shared module and delete here as well.
-
-        await deleteUserById(claims.sub);
-
-        return NextResponse.json({ ok: true });
-    } catch (error) {
-        return handleRouteError(error, "Error deleting Keycloak account");
+    if (!claims?.sub) {
+      return errorResponse(400, "No user id (sub) in token");
     }
+
+    // If you want to also remove local profile data, you can move the
+    // `profiles` Map into a shared module and delete here as well.
+
+    await deleteUserById(claims.sub);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return handleRouteError(error, "Error deleting Keycloak account");
+  }
 }

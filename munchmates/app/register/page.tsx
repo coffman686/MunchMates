@@ -7,80 +7,83 @@
 // - Authenticated users return to dashboard upon completion
 // - Link back to home and sign in
 
-'use client';
-import { useEffect, useState } from 'react';
-import { initKeycloak, register } from '@/lib/keycloak';
-import Link from 'next/link';
+"use client";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { initKeycloak, register } from "@/lib/keycloak";
 
 export default function Register() {
-    const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(false);
 
-    useEffect(() => {
-        let mounted = true;
+  useEffect(() => {
+    let mounted = true;
 
-        (async () => {
-            // Initialize Keycloak first
-            await initKeycloak('check-sso');
+    (async () => {
+      // Initialize Keycloak first
+      await initKeycloak("check-sso");
 
-            if (!mounted) return;
+      if (!mounted) return;
 
-            setReady(true);
+      setReady(true);
 
-            // Trigger registration with redirect back to dashboard
-            register({
-                redirectUri: `${window.location.origin}/dashboard`
-            });
-        })();
+      // Trigger registration with redirect back to dashboard
+      register({
+        redirectUri: `${window.location.origin}/dashboard`,
+      });
+    })();
 
-        return () => { mounted = false; };
-    }, []);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-    return (
-        <main style={{
-            padding: 48,
-            maxWidth: 400,
-            margin: '0 auto',
-            textAlign: 'center'
-        }}>
-            <h1 style={{ marginBottom: 24 }}>Create Account</h1>
+  return (
+    <main
+      style={{
+        padding: 48,
+        maxWidth: 400,
+        margin: "0 auto",
+        textAlign: "center",
+      }}
+    >
+      <h1 style={{ marginBottom: 24 }}>Create Account</h1>
 
-            {!ready ? (
-                <p>Preparing registration...</p>
-            ) : (
-                <>
-                    <p style={{ marginBottom: 24, color: '#666' }}>
-                        Redirecting to registration...
-                    </p>
-                    <button
-                        onClick={() => register({ redirectUri: `${window.location.origin}/dashboard` })}
-                        style={{
-                            padding: '12px 24px',
-                            backgroundColor: '#2563eb',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: 6,
-                            fontWeight: 600,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Continue to Registration
-                    </button>
-                </>
-            )}
+      {!ready ? (
+        <p>Preparing registration...</p>
+      ) : (
+        <>
+          <p style={{ marginBottom: 24, color: "#666" }}>Redirecting to registration...</p>
+          <button
+            type="button"
+            onClick={() => register({ redirectUri: `${window.location.origin}/dashboard` })}
+            style={{
+              padding: "12px 24px",
+              backgroundColor: "#2563eb",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Continue to Registration
+          </button>
+        </>
+      )}
 
-            <div style={{ marginTop: 32, fontSize: 14 }}>
-                <p>
-                    Already have an account?{' '}
-                    <Link href="/login" style={{ color: '#2563eb' }}>
-                        Sign in
-                    </Link>
-                </p>
-                <p>
-                    <Link href="/" style={{ color: '#666' }}>
-                        ← Back to Home
-                    </Link>
-                </p>
-            </div>
-        </main>
-    );
+      <div style={{ marginTop: 32, fontSize: 14 }}>
+        <p>
+          Already have an account?{" "}
+          <Link href="/login" style={{ color: "#2563eb" }}>
+            Sign in
+          </Link>
+        </p>
+        <p>
+          <Link href="/" style={{ color: "#666" }}>
+            ← Back to Home
+          </Link>
+        </p>
+      </div>
+    </main>
+  );
 }

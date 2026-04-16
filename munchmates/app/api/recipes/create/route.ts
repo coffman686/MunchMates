@@ -10,240 +10,259 @@
 // Uses mapToRecipeInfo() to convert DB rows into the RecipeInfo shape the UI expects,
 // mapping the ingredients string array into the extendedIngredients format.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { ensureUserExists } from "@/lib/user-service";
+import { verifyBearer } from "@/lib/verifyToken";
 
 type RecipePayloadBody = {
-    title?: unknown;
-    servings?: unknown;
-    readyInMinutes?: unknown;
-    dishTypes?: unknown;
-    cuisines?: unknown;
-    ingredients?: unknown;
-    instructions?: unknown;
-    image?: unknown;
-    summary?: unknown;
-    structuredIngredients?: unknown;
+  title?: unknown;
+  servings?: unknown;
+  readyInMinutes?: unknown;
+  dishTypes?: unknown;
+  cuisines?: unknown;
+  ingredients?: unknown;
+  instructions?: unknown;
+  image?: unknown;
+  summary?: unknown;
+  structuredIngredients?: unknown;
 };
 
 function parseRecipePayload(body: RecipePayloadBody) {
-    const { title, servings, readyInMinutes, dishTypes, cuisines, ingredients, instructions, image, summary } = body;
+  const {
+    title,
+    servings,
+    readyInMinutes,
+    dishTypes,
+    cuisines,
+    ingredients,
+    instructions,
+    image,
+    summary,
+  } = body;
 
-    if (!title || typeof title !== "string" || !title.trim()) {
-        return { error: errorResponse(400, "Recipe title is required") } as const;
-    }
+  if (!title || typeof title !== "string" || !title.trim()) {
+    return { error: errorResponse(400, "Recipe title is required") } as const;
+  }
 
-    if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
-        return { error: errorResponse(400, "At least one ingredient is required") } as const;
-    }
+  if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
+    return { error: errorResponse(400, "At least one ingredient is required") } as const;
+  }
 
-    if (!instructions || typeof instructions !== "string" || !instructions.trim()) {
-        return { error: errorResponse(400, "Instructions are required") } as const;
-    }
+  if (!instructions || typeof instructions !== "string" || !instructions.trim()) {
+    return { error: errorResponse(400, "Instructions are required") } as const;
+  }
 
-    const structuredIngredients = Array.isArray(body.structuredIngredients)
-        ? body.structuredIngredients
-            .map((si) => {
-                if (!si || typeof si !== "object") return null;
-                const candidate = si as Record<string, unknown>;
-                const name = String(candidate.name || "").trim();
-                const original = String(candidate.original || "").trim();
+  const structuredIngredients = Array.isArray(body.structuredIngredients)
+    ? body.structuredIngredients
+        .map((si) => {
+          if (!si || typeof si !== "object") return null;
+          const candidate = si as Record<string, unknown>;
+          const name = String(candidate.name || "").trim();
+          const original = String(candidate.original || "").trim();
 
-                if (!name || !original) return null;
+          if (!name || !original) return null;
 
-                return {
-                    name,
-                    amount: Number(candidate.amount) || 0,
-                    unit: String(candidate.unit || "").trim(),
-                    original,
-                };
-            })
-            .filter((si): si is { name: string; amount: number; unit: string; original: string } => !!si)
-        : [];
+          return {
+            name,
+            amount: Number(candidate.amount) || 0,
+            unit: String(candidate.unit || "").trim(),
+            original,
+          };
+        })
+        .filter(
+          (si): si is { name: string; amount: number; unit: string; original: string } => !!si,
+        )
+    : [];
 
-    return {
-        recipeData: {
-            title: title.trim(),
-            servings: Number(servings) || 1,
-            readyInMinutes: Number(readyInMinutes) || 30,
-            dishTypes: Array.isArray(dishTypes) && dishTypes.length > 0 ? dishTypes.map((type) => String(type)) : ["main course"],
-            cuisines: Array.isArray(cuisines) && cuisines.length > 0 ? cuisines.map((cuisine) => String(cuisine)) : ["American"],
-            ingredients: ingredients.map((ingredient) => String(ingredient)),
-            instructions: instructions.trim(),
-            image: typeof image === "string" && image.trim() ? image.trim() : null,
-            summary: typeof summary === "string" && summary.trim() ? summary.trim() : null,
-        },
-        structuredIngredients,
-    } as const;
+  return {
+    recipeData: {
+      title: title.trim(),
+      servings: Number(servings) || 1,
+      readyInMinutes: Number(readyInMinutes) || 30,
+      dishTypes:
+        Array.isArray(dishTypes) && dishTypes.length > 0
+          ? dishTypes.map((type) => String(type))
+          : ["main course"],
+      cuisines:
+        Array.isArray(cuisines) && cuisines.length > 0
+          ? cuisines.map((cuisine) => String(cuisine))
+          : ["American"],
+      ingredients: ingredients.map((ingredient) => String(ingredient)),
+      instructions: instructions.trim(),
+      image: typeof image === "string" && image.trim() ? image.trim() : null,
+      summary: typeof summary === "string" && summary.trim() ? summary.trim() : null,
+    },
+    structuredIngredients,
+  } as const;
 }
 
 export async function POST(req: NextRequest) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const userId = p.sub;
 
-        const body = await req.json();
-        const parsed = parseRecipePayload(body);
-        if ("error" in parsed) return parsed.error;
+    const body = await req.json();
+    const parsed = parseRecipePayload(body);
+    if ("error" in parsed) return parsed.error;
 
-        await ensureUserExists(userId, p);
+    await ensureUserExists(userId, p);
 
-        const data: Parameters<typeof prisma.customRecipe.create>[0]['data'] = {
-            userId,
-            ...parsed.recipeData,
-            image: parsed.recipeData.image ?? undefined,
-            summary: parsed.recipeData.summary ?? undefined,
-        };
+    const data: Parameters<typeof prisma.customRecipe.create>[0]["data"] = {
+      userId,
+      ...parsed.recipeData,
+      image: parsed.recipeData.image ?? undefined,
+      summary: parsed.recipeData.summary ?? undefined,
+    };
 
-        // Create structured ingredients if provided
-        if (parsed.structuredIngredients.length > 0) {
-            data.structuredIngredients = {
-                create: parsed.structuredIngredients,
-            };
-        }
-
-        const newRecipe = await prisma.customRecipe.create({ data });
-
-        // Match original response shape
-        const recipe = {
-            id: newRecipe.id,
-            userId: newRecipe.userId,
-            title: newRecipe.title,
-            servings: newRecipe.servings,
-            readyInMinutes: newRecipe.readyInMinutes,
-            dishTypes: newRecipe.dishTypes,
-            cuisines: newRecipe.cuisines,
-            ingredients: newRecipe.ingredients,
-            instructions: newRecipe.instructions,
-            createdAt: newRecipe.createdAt.toISOString(),
-            image: newRecipe.image ?? undefined,
-        };
-
-        return NextResponse.json(
-            {
-                ok: true,
-                message: "Recipe created successfully",
-                id: newRecipe.id,
-                recipe,
-            },
-            { status: 201 }
-        );
-    } catch (error) {
-        return handleRouteError(error, "Error creating recipe:");
+    // Create structured ingredients if provided
+    if (parsed.structuredIngredients.length > 0) {
+      data.structuredIngredients = {
+        create: parsed.structuredIngredients,
+      };
     }
+
+    const newRecipe = await prisma.customRecipe.create({ data });
+
+    // Match original response shape
+    const recipe = {
+      id: newRecipe.id,
+      userId: newRecipe.userId,
+      title: newRecipe.title,
+      servings: newRecipe.servings,
+      readyInMinutes: newRecipe.readyInMinutes,
+      dishTypes: newRecipe.dishTypes,
+      cuisines: newRecipe.cuisines,
+      ingredients: newRecipe.ingredients,
+      instructions: newRecipe.instructions,
+      createdAt: newRecipe.createdAt.toISOString(),
+      image: newRecipe.image ?? undefined,
+    };
+
+    return NextResponse.json(
+      {
+        ok: true,
+        message: "Recipe created successfully",
+        id: newRecipe.id,
+        recipe,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    return handleRouteError(error, "Error creating recipe:");
+  }
 }
 
 export async function PUT(req: NextRequest) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
-        const id = parseInt(req.nextUrl.searchParams.get("id") || "", 10);
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const userId = p.sub;
+    const id = parseInt(req.nextUrl.searchParams.get("id") || "", 10);
 
-        if (isNaN(id)) {
-            return errorResponse(400, "Invalid recipe ID");
-        }
-
-        const existingRecipe = await prisma.customRecipe.findUnique({ where: { id } });
-        if (!existingRecipe || existingRecipe.userId !== userId) {
-            return errorResponse(404, "Recipe not found");
-        }
-
-        const body = await req.json();
-        const parsed = parseRecipePayload(body);
-        if ("error" in parsed) return parsed.error;
-
-        const data: Parameters<typeof prisma.customRecipe.update>[0]["data"] = {
-            ...parsed.recipeData,
-            structuredIngredients: {
-                deleteMany: {},
-                ...(parsed.structuredIngredients.length > 0
-                    ? { create: parsed.structuredIngredients }
-                    : {}),
-            },
-        };
-
-        const updatedRecipe = await prisma.customRecipe.update({
-            where: { id },
-            data,
-        });
-
-        return NextResponse.json({
-            ok: true,
-            message: "Recipe updated successfully",
-            id: updatedRecipe.id,
-            recipe: {
-                id: updatedRecipe.id,
-                userId: updatedRecipe.userId,
-                title: updatedRecipe.title,
-                servings: updatedRecipe.servings,
-                readyInMinutes: updatedRecipe.readyInMinutes,
-                dishTypes: updatedRecipe.dishTypes,
-                cuisines: updatedRecipe.cuisines,
-                ingredients: updatedRecipe.ingredients,
-                instructions: updatedRecipe.instructions,
-                createdAt: updatedRecipe.createdAt.toISOString(),
-                image: updatedRecipe.image ?? undefined,
-                summary: updatedRecipe.summary ?? undefined,
-            },
-        });
-    } catch (error) {
-        return handleRouteError(error, "Error updating recipe:");
+    if (Number.isNaN(id)) {
+      return errorResponse(400, "Invalid recipe ID");
     }
+
+    const existingRecipe = await prisma.customRecipe.findUnique({ where: { id } });
+    if (!existingRecipe || existingRecipe.userId !== userId) {
+      return errorResponse(404, "Recipe not found");
+    }
+
+    const body = await req.json();
+    const parsed = parseRecipePayload(body);
+    if ("error" in parsed) return parsed.error;
+
+    const data: Parameters<typeof prisma.customRecipe.update>[0]["data"] = {
+      ...parsed.recipeData,
+      structuredIngredients: {
+        deleteMany: {},
+        ...(parsed.structuredIngredients.length > 0
+          ? { create: parsed.structuredIngredients }
+          : {}),
+      },
+    };
+
+    const updatedRecipe = await prisma.customRecipe.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: "Recipe updated successfully",
+      id: updatedRecipe.id,
+      recipe: {
+        id: updatedRecipe.id,
+        userId: updatedRecipe.userId,
+        title: updatedRecipe.title,
+        servings: updatedRecipe.servings,
+        readyInMinutes: updatedRecipe.readyInMinutes,
+        dishTypes: updatedRecipe.dishTypes,
+        cuisines: updatedRecipe.cuisines,
+        ingredients: updatedRecipe.ingredients,
+        instructions: updatedRecipe.instructions,
+        createdAt: updatedRecipe.createdAt.toISOString(),
+        image: updatedRecipe.image ?? undefined,
+        summary: updatedRecipe.summary ?? undefined,
+      },
+    });
+  } catch (error) {
+    return handleRouteError(error, "Error updating recipe:");
+  }
 }
 
 // Helper: map a DB CustomRecipe row to the RecipeInfo shape the UI expects
 // If structuredIngredients are available, uses them for proper amount/unit data.
 // Otherwise falls back to the flat ingredients string array.
 function mapToRecipeInfo(r: {
+  id: number;
+  title: string;
+  image: string | null;
+  summary: string | null;
+  readyInMinutes: number;
+  servings: number;
+  cuisines: string[];
+  dishTypes: string[];
+  ingredients: string[];
+  instructions: string;
+  structuredIngredients?: Array<{
     id: number;
-    title: string;
-    image: string | null;
-    summary: string | null;
-    readyInMinutes: number;
-    servings: number;
-    cuisines: string[];
-    dishTypes: string[];
-    ingredients: string[];
-    instructions: string;
-    structuredIngredients?: Array<{
-        id: number;
-        name: string;
-        amount: number;
-        unit: string;
-        original: string;
-    }>;
+    name: string;
+    amount: number;
+    unit: string;
+    original: string;
+  }>;
 }) {
-    const extendedIngredients = r.structuredIngredients && r.structuredIngredients.length > 0
-        ? r.structuredIngredients.map((si) => ({
-            id: si.id,
-            name: si.name,
-            amount: si.amount,
-            unit: si.unit,
-            original: si.original,
+  const extendedIngredients =
+    r.structuredIngredients && r.structuredIngredients.length > 0
+      ? r.structuredIngredients.map((si) => ({
+          id: si.id,
+          name: si.name,
+          amount: si.amount,
+          unit: si.unit,
+          original: si.original,
         }))
-        : r.ingredients.map((name, index) => ({
-            id: index,
-            name,
-            amount: 0,
-            unit: "",
-            original: name,
+      : r.ingredients.map((name, index) => ({
+          id: index,
+          name,
+          amount: 0,
+          unit: "",
+          original: name,
         }));
 
-    return {
-        id: r.id,
-        title: r.title,
-        image: r.image ?? undefined,
-        summary: r.summary ?? undefined,
-        readyInMinutes: r.readyInMinutes,
-        servings: r.servings,
-        cuisines: r.cuisines,
-        dishTypes: r.dishTypes,
-        instructions: r.instructions,
-        extendedIngredients,
-    };
+  return {
+    id: r.id,
+    title: r.title,
+    image: r.image ?? undefined,
+    summary: r.summary ?? undefined,
+    readyInMinutes: r.readyInMinutes,
+    servings: r.servings,
+    cuisines: r.cuisines,
+    dishTypes: r.dishTypes,
+    instructions: r.instructions,
+    extendedIngredients,
+  };
 }
 
 // GET endpoint to retrieve custom recipes
@@ -252,76 +271,80 @@ function mapToRecipeInfo(r: {
 //   (no params)    → returns all recipes for the authenticated user (auth required)
 // Single-recipe mode is used by the detail page when recipeId >= 100000
 export async function GET(req: NextRequest) {
-    try {
-        const singleId = req.nextUrl.searchParams.get("id");
+  try {
+    const singleId = req.nextUrl.searchParams.get("id");
 
-        // Single recipe lookup by ID — used by detail views for custom recipes
-        if (singleId) {
-            const id = parseInt(singleId, 10);
-            if (isNaN(id)) {
-                return errorResponse(400, "Invalid recipe ID");
-            }
+    // Single recipe lookup by ID — used by detail views for custom recipes
+    if (singleId) {
+      const id = parseInt(singleId, 10);
+      if (Number.isNaN(id)) {
+        return errorResponse(400, "Invalid recipe ID");
+      }
 
-            const recipe = await prisma.customRecipe.findUnique({
-                where: { id },
-                include: { structuredIngredients: true },
-            });
-            if (!recipe) {
-                return errorResponse(404, "Recipe not found");
-            }
+      const recipe = await prisma.customRecipe.findUnique({
+        where: { id },
+        include: { structuredIngredients: true },
+      });
+      if (!recipe) {
+        return errorResponse(404, "Recipe not found");
+      }
 
-            return NextResponse.json({ ok: true, recipe: mapToRecipeInfo(recipe) });
-        }
-
-        // List all recipes for the authenticated user
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
-
-        const recipes = await prisma.customRecipe.findMany({
-            where: { userId },
-        });
-
-        return NextResponse.json({
-            ok: true,
-            recipes: recipes.map((r) => ({
-                id: r.id,
-                userId: r.userId,
-                title: r.title,
-                servings: r.servings,
-                readyInMinutes: r.readyInMinutes,
-                dishTypes: r.dishTypes,
-                cuisines: r.cuisines,
-                ingredients: r.ingredients,
-                instructions: r.instructions,
-                createdAt: r.createdAt.toISOString(),
-                image: r.image ?? undefined,
-            })),
-            count: recipes.length,
-        });
-    } catch (error) {
-        return handleRouteError(error, "Error in GET /api/recipes/create:");
+      return NextResponse.json({
+        ok: true,
+        recipe: mapToRecipeInfo(recipe),
+      });
     }
+
+    // List all recipes for the authenticated user
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const userId = p.sub;
+
+    const recipes = await prisma.customRecipe.findMany({
+      where: { userId },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      recipes: recipes.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        title: r.title,
+        servings: r.servings,
+        readyInMinutes: r.readyInMinutes,
+        dishTypes: r.dishTypes,
+        cuisines: r.cuisines,
+        ingredients: r.ingredients,
+        instructions: r.instructions,
+        createdAt: r.createdAt.toISOString(),
+        image: r.image ?? undefined,
+      })),
+      count: recipes.length,
+    });
+  } catch (error) {
+    return handleRouteError(error, "Error in GET /api/recipes/create:");
+  }
 }
 
+// Delete created recipe
 export async function DELETE(req: NextRequest) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = p.sub;
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const userId = p.sub;
 
-        const id = parseInt(req.nextUrl.searchParams.get("id") || "", 10);
-        if (isNaN(id)) {
-            return errorResponse(400, "Invalid recipe ID");
-        }
-
-        const recipe = await prisma.customRecipe.findUnique({ where: { id } });
-        if (!recipe || recipe.userId !== userId) {
-            return errorResponse(404, "Recipe not found");
-        }
-
-        await prisma.customRecipe.delete({ where: { id } });
-
-        return NextResponse.json({ ok: true, message: "Recipe deleted" });
-    } catch (error) {
-        return handleRouteError(error, "Error in DELETE /api/recipes/create:");
+    const id = parseInt(req.nextUrl.searchParams.get("id") || "", 10);
+    if (Number.isNaN(id)) {
+      return errorResponse(400, "Invalid recipe ID");
     }
+
+    const recipe = await prisma.customRecipe.findUnique({ where: { id } });
+    if (!recipe || recipe.userId !== userId) {
+      return errorResponse(404, "Recipe not found");
+    }
+
+    await prisma.customRecipe.delete({ where: { id } });
+
+    return NextResponse.json({ ok: true, message: "Recipe deleted" });
+  } catch (error) {
+    return handleRouteError(error, "Error in DELETE /api/recipes/create:");
+  }
 }

@@ -1,3 +1,6 @@
+// vitest.config.ts
+// Configures vitest test environment and test sources
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

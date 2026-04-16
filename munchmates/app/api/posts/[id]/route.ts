@@ -5,25 +5,25 @@
 //           post are removed automatically via cascade delete.
 // Backed by Postgres via Prisma; data persists across server restarts.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { verifyBearer } from "@/lib/verifyToken";
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = String(p.sub);
-        const { id } = await params;
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const userId = String(p.sub);
+    const { id } = await params;
 
-        const post = await prisma.post.findUnique({ where: { id } });
-        if (!post) return errorResponse(404, "Post not found");
-        if (post.userId !== userId) return errorResponse(403, "Not authorized to delete this post");
+    const post = await prisma.post.findUnique({ where: { id } });
+    if (!post) return errorResponse(404, "Post not found");
+    if (post.userId !== userId) return errorResponse(403, "Not authorized to delete this post");
 
-        await prisma.post.delete({ where: { id } });
+    await prisma.post.delete({ where: { id } });
 
-        return NextResponse.json({ ok: true });
-    } catch (error) {
-        return handleRouteError(error, "Error in DELETE /api/posts/[id]:");
-    }
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return handleRouteError(error, "Error in DELETE /api/posts/[id]:");
+  }
 }

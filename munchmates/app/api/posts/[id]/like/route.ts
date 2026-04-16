@@ -6,38 +6,38 @@
 //         client can reconcile its optimistic update.
 // Backed by Postgres via Prisma; data persists across server restarts.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { verifyBearer } from "@/lib/verifyToken";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const userId = String(p.sub);
-        const { id: postId } = await params;
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const userId = String(p.sub);
+    const { id: postId } = await params;
 
-        const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
-        if (!post) return errorResponse(404, "Post not found");
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    if (!post) return errorResponse(404, "Post not found");
 
-        await prisma.user.upsert({
-            where: { id: userId },
-            update: {},
-            create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
-        });
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
+    });
 
-        const [{ count: deleted }, likeCount] = await prisma.$transaction(async (tx) => {
-            const del = await tx.postLike.deleteMany({ where: { postId, userId } });
-            if (del.count === 0) {
-                await tx.postLike.create({ data: { postId, userId } });
-            }
-            const total = await tx.postLike.count({ where: { postId } });
-            return [del, total] as const;
-        });
-        const liked = deleted === 0;
+    const [{ count: deleted }, likeCount] = await prisma.$transaction(async (tx) => {
+      const del = await tx.postLike.deleteMany({ where: { postId, userId } });
+      if (del.count === 0) {
+        await tx.postLike.create({ data: { postId, userId } });
+      }
+      const total = await tx.postLike.count({ where: { postId } });
+      return [del, total] as const;
+    });
+    const liked = deleted === 0;
 
-        return NextResponse.json({ ok: true, liked, likeCount });
-    } catch (error) {
-        return handleRouteError(error, "Error in POST /api/posts/[id]/like:");
-    }
+    return NextResponse.json({ ok: true, liked, likeCount });
+  } catch (error) {
+    return handleRouteError(error, "Error in POST /api/posts/[id]/like:");
+  }
 }

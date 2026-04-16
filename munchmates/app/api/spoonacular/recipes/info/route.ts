@@ -6,46 +6,41 @@
 //                           for pantry/canonName matching. Original is preserved
 //                           as `originalName`. Defaults to false.
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { getRecipeInformation } from '@/lib/spoonacular';
-import { normalize } from '@/lib/normalize';
-import { verifyBearer } from '@/lib/verifyToken';
+import { normalize } from "@/lib/normalize";
+import { getRecipeInformation } from "@/lib/spoonacular";
+import { verifyBearer } from "@/lib/verifyToken";
 
 export async function GET(req: NextRequest) {
   // Verify bearer token for authentication
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   try {
     await verifyBearer(authHeader ?? undefined);
-  } catch (err) {
+  } catch (_err) {
     return errorResponse(401, "Unauthorized");
   }
-  const recipeId = req.nextUrl.searchParams.get('id');
-  const shouldNormalize = req.nextUrl.searchParams.get('normalize') === 'true';
+  const recipeId = req.nextUrl.searchParams.get("id");
 
   if (!recipeId) {
-    return errorResponse(400, 'Recipe ID is required');
+    return errorResponse(400, "Recipe ID is required");
   }
 
   try {
     const recipeInfo = await getRecipeInformation(parseInt(recipeId, 10));
 
-    if (shouldNormalize && recipeInfo.extendedIngredients) {
-      recipeInfo.extendedIngredients = recipeInfo.extendedIngredients.map(
-        (ingredient) => ({
-          ...ingredient,
-          originalName: ingredient.name,
-          name: normalize(ingredient.name),
-        })
-      );
+    // Normalize ingredient names for matching with pantry canonName values.
+    // Preserve the original name for display purposes.
+    if (recipeInfo.extendedIngredients) {
+      recipeInfo.extendedIngredients = recipeInfo.extendedIngredients.map((ingredient) => ({
+        ...ingredient,
+        originalName: ingredient.name,
+        name: normalize(ingredient.name),
+      }));
     }
 
     return NextResponse.json(recipeInfo);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    if (errorMessage.includes('402')) {
-      return errorResponse(402, 'API daily limit reached. Please try again tomorrow or upgrade your Spoonacular plan.');
-    }
-    return handleRouteError(error, 'Failed to fetch recipe info');
+    return handleRouteError(error, "Failed to fetch recipe info");
   }
 }

@@ -2,13 +2,13 @@
 // Typeahead search input that fetches Spoonacular autocomplete suggestions
 // Debounces input, shows dropdown with thumbnails, navigates to recipe on select
 
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
-import { Search, Loader2, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { authedFetch } from '@/lib/authedFetch';
+import { Loader2, Search, X } from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
 
 interface Suggestion {
   id: number;
@@ -41,7 +41,9 @@ export default function RecipeAutocomplete({
 
     setIsLoading(true);
     try {
-      const res = await authedFetch(`/api/spoonacular/recipes/autocomplete?query=${encodeURIComponent(q)}&number=7`);
+      const res = await fetch(
+        `/api/spoonacular/recipes/autocomplete?query=${encodeURIComponent(q)}&number=7`,
+      );
       if (res.ok) {
         const data = await res.json();
         setSuggestions(data.suggestions || []);
@@ -60,7 +62,7 @@ export default function RecipeAutocomplete({
     debounceRef.current = setTimeout(() => fetchSuggestions(newValue), 300);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.SubmitEvent) => {
     e.preventDefault();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSuggestions([]);
@@ -71,7 +73,7 @@ export default function RecipeAutocomplete({
   const handleSelect = (suggestion: Suggestion) => {
     setIsOpen(false);
     onChange(suggestion.title);
-    sessionStorage.setItem('mm_back', window.location.pathname);
+    sessionStorage.setItem("mm_back", window.location.pathname);
     router.push(`/recipes/${suggestion.id}`);
   };
 
@@ -89,12 +91,12 @@ export default function RecipeAutocomplete({
         setIsOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       setIsOpen(false);
     }
   };
@@ -110,20 +112,28 @@ export default function RecipeAutocomplete({
             value={value}
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => { if (suggestions.length > 0) setIsOpen(true); }}
+            onFocus={() => {
+              if (suggestions.length > 0) setIsOpen(true);
+            }}
             placeholder="Search for a recipe..."
             className="pl-9 pr-9"
           />
           {isLoading ? (
             <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-          ) : value && (
-            <button
-              type="button"
-              onClick={() => { onChange(''); setSuggestions([]); setIsOpen(false); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          ) : (
+            value && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setSuggestions([]);
+                  setIsOpen(false);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )
           )}
         </div>
       </form>
@@ -139,11 +149,13 @@ export default function RecipeAutocomplete({
                 handleSelect(s);
               }}
             >
-              <img
-                src={`https://img.spoonacular.com/recipes/${s.id}-90x90.${s.imageType}`}
-                alt=""
-                className="h-10 w-10 rounded object-cover shrink-0"
-              />
+              <div className="relative h-10 w-10 rounded object-cover shrink-0">
+                <Image
+                  src={`https://img.spoonacular.com/recipes/${s.id}-90x90.${s.imageType}`}
+                  alt={s.title}
+                  fill
+                />
+              </div>
               <span className="text-sm truncate">{s.title}</span>
             </li>
           ))}

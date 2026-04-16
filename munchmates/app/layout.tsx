@@ -4,8 +4,6 @@
 import type { Metadata } from "next";
 import { notoSans } from "../lib/fonts";
 import "./globals.css";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "@/components/layout/app-sidebar";
 
 export const metadata: Metadata = {
   title: "MunchMates",

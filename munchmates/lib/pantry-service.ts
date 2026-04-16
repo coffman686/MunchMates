@@ -1,9 +1,12 @@
+// lib/pantry-service.ts
+// Combined functions for manipulating pantry items and categories
+
 import { normalize } from "@/lib/normalize";
 import { parseQuantity } from "@/lib/parseQuantity";
 import type { PantryItem } from "@/lib/types/pantry";
 import {
-  convertToBase,
   COUNT_MULTIPLIERS,
+  convertToBase,
   getUnitType,
   normalizeUnit,
 } from "@/lib/unit-conversion";
@@ -43,6 +46,7 @@ interface PantryIngredientMatch {
   status: "matched" | "partial" | "unmatched";
 }
 
+// Describes pantry backend behavior for usage in both postgres and tests
 interface PantryRepository {
   user: {
     upsert(args: {
@@ -53,9 +57,15 @@ interface PantryRepository {
   };
   pantryItem: {
     findFirst(args: { where: Record<string, unknown> }): Promise<PantryItemRecord | null>;
-    findMany(args: { where: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc"> }): Promise<PantryItemRecord[]>;
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy?: Record<string, "asc" | "desc">;
+    }): Promise<PantryItemRecord[]>;
     create(args: { data: Record<string, unknown> }): Promise<PantryItemRecord>;
-    update(args: { where: { id: number }; data: Record<string, unknown> }): Promise<PantryItemRecord>;
+    update(args: {
+      where: { id: number };
+      data: Record<string, unknown>;
+    }): Promise<PantryItemRecord>;
     delete(args: { where: { id: number } }): Promise<unknown>;
   };
 }
@@ -77,7 +87,9 @@ export class PantryServiceError extends Error {
 }
 
 function requireTrimmedString(value: unknown, fieldName: string, maxLength: number): string {
-  const trimmed = String(value ?? "").trim().slice(0, maxLength);
+  const trimmed = String(value ?? "")
+    .trim()
+    .slice(0, maxLength);
   if (!trimmed) {
     throw new PantryServiceError(400, `Missing required field: ${fieldName}`);
   }
@@ -98,6 +110,7 @@ function sanitizeAmount(amountValue: unknown): number {
   return amount;
 }
 
+// normalize pantry item quantities against known list
 export function sanitizePantryQuantity(
   body: Record<string, unknown>,
   options: { requireQuantity: boolean },
@@ -106,7 +119,9 @@ export function sanitizePantryQuantity(
 
   if (hasStructured) {
     const amount = sanitizeAmount(body.amount);
-    const unit = String(body.unit ?? "").trim().slice(0, 50);
+    const unit = String(body.unit ?? "")
+      .trim()
+      .slice(0, 50);
     const quantity = body.quantity
       ? String(body.quantity).trim().slice(0, 100)
       : `${amount} ${unit}`.trim();
@@ -114,7 +129,11 @@ export function sanitizePantryQuantity(
     return { quantity, amount, unit };
   }
 
-  if (body.quantity === undefined || body.quantity === null || String(body.quantity).trim() === "") {
+  if (
+    body.quantity === undefined ||
+    body.quantity === null ||
+    String(body.quantity).trim() === ""
+  ) {
     if (options.requireQuantity) {
       throw new PantryServiceError(400, "Missing required field: quantity (or amount)");
     }
@@ -134,6 +153,7 @@ export function sanitizePantryQuantity(
   };
 }
 
+// format pantry item response
 export function formatPantryItemResponse(item: PantryItemRecord): PantryResponseItem {
   let amount = item.amount;
   let unit = item.unit;
@@ -167,6 +187,7 @@ async function ensureUser(repo: PantryRepository, userId: string): Promise<void>
   });
 }
 
+// add new item to the pantry
 export async function addPantryItem(
   repo: PantryRepository,
   userId: string,
@@ -175,7 +196,9 @@ export async function addPantryItem(
   const name = requireTrimmedString(body.name, "name", 200);
   const category = requireTrimmedString(body.category, "category", 100);
   const expiryDate = sanitizeOptionalDate(body.expiryDate);
-  const { quantity, amount, unit } = sanitizePantryQuantity(body, { requireQuantity: true });
+  const { quantity, amount, unit } = sanitizePantryQuantity(body, {
+    requireQuantity: true,
+  });
 
   await ensureUser(repo, userId);
 
@@ -212,6 +235,7 @@ export async function addPantryItem(
   });
 }
 
+// update pantry item with new name, category, quantity, or expiration date
 export async function updatePantryItem(
   repo: PantryRepository,
   userId: string,
@@ -239,7 +263,9 @@ export async function updatePantryItem(
   }
 
   if (body.amount !== undefined || body.quantity !== undefined) {
-    const quantityDetails = sanitizePantryQuantity(body, { requireQuantity: false });
+    const quantityDetails = sanitizePantryQuantity(body, {
+      requireQuantity: false,
+    });
     if (quantityDetails.quantity) {
       updateData.quantity = quantityDetails.quantity;
     }
@@ -261,6 +287,7 @@ export async function updatePantryItem(
   });
 }
 
+// delete pantry item by id
 export async function deletePantryItem(
   repo: PantryRepository,
   userId: string,
@@ -313,6 +340,7 @@ const GENERIC_WORDS = new Set([
   "medium",
 ]);
 
+// find pantry items that match ingredient list
 export function matchPantryIngredients(
   pantryItems: PantryItemRecord[],
   ingredients: PantryIngredientInput[],
@@ -345,10 +373,7 @@ export function matchPantryIngredients(
         continue;
       }
 
-      if (
-        ingredientCanon.endsWith(` ${canon}`) ||
-        canon.endsWith(` ${ingredientCanon}`)
-      ) {
+      if (ingredientCanon.endsWith(` ${canon}`) || canon.endsWith(` ${ingredientCanon}`)) {
         const score = Math.min(canon.length, ingredientCanon.length) * 8;
         if (score > bestScore) {
           bestScore = score;

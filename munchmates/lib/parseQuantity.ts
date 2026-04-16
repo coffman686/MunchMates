@@ -6,9 +6,7 @@ export function parseQuantity(input: string): { amount: number; unit: string } |
   if (!trimmed) return null;
 
   // Match patterns like: "2", "1/2", "1 1/2", "2.5", "2 cups", "1/2 tsp", "1 1/2 cups"
-  const match = trimmed.match(
-    /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+\.?\d*)\s*(.*)/
-  );
+  const match = trimmed.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+\.?\d*)\s*(.*)/);
 
   if (!match) return null;
 
@@ -20,20 +18,20 @@ export function parseQuantity(input: string): { amount: number; unit: string } |
   // Mixed fraction: "1 1/2"
   if (/^\d+\s+\d+\/\d+$/.test(rawNumber)) {
     const [whole, frac] = rawNumber.split(/\s+/);
-    const [num, den] = frac.split('/');
-    amount = parseInt(whole) + parseInt(num) / parseInt(den);
+    const [num, den] = frac.split("/");
+    amount = parseInt(whole, 10) + parseInt(num, 10) / parseInt(den, 10);
   }
   // Simple fraction: "1/2"
   else if (/^\d+\/\d+$/.test(rawNumber)) {
-    const [num, den] = rawNumber.split('/');
-    amount = parseInt(num) / parseInt(den);
+    const [num, den] = rawNumber.split("/");
+    amount = parseInt(num, 10) / parseInt(den, 10);
   }
   // Decimal or integer
   else {
     amount = parseFloat(rawNumber);
   }
 
-  if (isNaN(amount)) return null;
+  if (Number.isNaN(amount)) return null;
 
   return { amount, unit };
 }

@@ -3,26 +3,44 @@
 // Allows users to search for recipes or select from saved recipes,
 // then choose days to add the selected recipe to.
 
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { ArrowLeft, Check, ChefHat, Clock, Heart, Loader2, Search, Users } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Search, Clock, Users, ChefHat, Loader2, ArrowLeft, Check, Heart } from 'lucide-react';
-import { ensureDietaryPrefsLoaded, getDiets, getIntolerances } from '@/lib/dietary-prefs';
-import { authedFetch } from '@/lib/authedFetch';
-import type { SavedRecipe, RecipeSearchResult as Recipe } from '@/lib/types/recipe';
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { authedFetch } from "@/lib/authedFetch";
+import { ensureDietaryPrefsLoaded, getDiets, getIntolerances } from "@/lib/dietary-prefs";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
+
+interface Recipe {
+  id: number;
+  title: string;
+  image: string;
+  score: number;
+  servings: number;
+  readyInMinutes: number;
+  cuisines: string[];
+  dishTypes: string[];
+}
+
+interface SavedRecipe {
+  recipeId: number;
+  recipeName: string;
+  recipeImage?: string;
+  savedAt: string;
+}
 
 const CUSTOM_RECIPE_ID_START = 100000;
 
@@ -32,7 +50,7 @@ const getSavedRecipeImage = (recipe: SavedRecipe) => {
   if (recipe.recipeImage) return recipe.recipeImage;
   return !isCustomRecipeId(recipe.recipeId)
     ? `https://img.spoonacular.com/recipes/${recipe.recipeId}-636x393.jpg`
-    : '';
+    : "";
 };
 
 type CustomRecipe = {
@@ -45,7 +63,7 @@ type CustomRecipe = {
   cuisines: string[];
 };
 
-type TabType = 'search' | 'saved' | 'my';
+type TabType = "search" | "saved" | "my";
 
 interface RecipePickerDialogProps {
   open: boolean;
@@ -56,20 +74,20 @@ interface RecipePickerDialogProps {
 }
 
 const dishTypes = [
-  'All',
-  'main course',
-  'side dish',
-  'dessert',
-  'appetizer',
-  'salad',
-  'bread',
-  'breakfast',
-  'soup',
-  'beverage',
-  'snack',
+  "All",
+  "main course",
+  "side dish",
+  "dessert",
+  "appetizer",
+  "salad",
+  "bread",
+  "breakfast",
+  "soup",
+  "beverage",
+  "snack",
 ];
 
-const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function RecipePickerDialog({
   open,
@@ -79,11 +97,11 @@ export default function RecipePickerDialog({
   availableDays,
 }: RecipePickerDialogProps) {
   // Tab state
-  const [activeTab, setActiveTab] = useState<TabType>('search');
+  const [activeTab, setActiveTab] = useState<TabType>("search");
 
   // Search state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDishType, setSelectedDishType] = useState('All');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDishType, setSelectedDishType] = useState("All");
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -105,16 +123,16 @@ export default function RecipePickerDialog({
     await ensureDietaryPrefsLoaded();
     const diet = getDiets();
     const intolerances = getIntolerances();
-    const dishType = selectedDishType !== 'All' ? selectedDishType : undefined;
+    const dishType = selectedDishType !== "All" ? selectedDishType : undefined;
 
     try {
       const response = await authedFetch(
-        `/api/spoonacular/recipes/searchByIngredient?ingredients=${encodeURIComponent(query)}&dishType=${dishType || ''}&diet=${diet}&intolerances=${intolerances}`
+        `/api/spoonacular/recipes/searchByIngredient?ingredients=${encodeURIComponent(query)}&dishType=${dishType || ""}&diet=${diet}&intolerances=${intolerances}`,
       );
       const data = await response.json();
       setRecipes(data.results || []);
     } catch (error) {
-      console.error('Failed to fetch recipes:', error);
+      console.error("Failed to fetch recipes:", error);
       setRecipes([]);
     } finally {
       setIsLoading(false);
@@ -128,7 +146,7 @@ export default function RecipePickerDialog({
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       handleSearch();
     }
   };
@@ -145,9 +163,7 @@ export default function RecipePickerDialog({
 
   const handleDayToggle = (dayDate: string) => {
     setSelectedDays((prev) =>
-      prev.includes(dayDate)
-        ? prev.filter((d) => d !== dayDate)
-        : [...prev, dayDate]
+      prev.includes(dayDate) ? prev.filter((d) => d !== dayDate) : [...prev, dayDate],
     );
   };
 
@@ -167,20 +183,21 @@ export default function RecipePickerDialog({
     }
   };
 
-  const resetState = () => {
-    setActiveTab('search');
-    setSearchTerm('');
-    setSelectedDishType('All');
+  const resetState = useCallback(() => {
+    setActiveTab("search");
+    setSearchTerm("");
+    setSelectedDishType("All");
     setRecipes([]);
     setHasSearched(false);
     setSelectedRecipe(null);
     setSelectedDays([]);
-  };
+  }, []);
 
   // Load saved recipes from API
-  const loadSavedRecipes = async () => {
+  const loadSavedRecipes = useCallback(async () => {
     try {
-      const res = await authedFetch('/api/recipes/saved');
+      const res = await authedFetch("/api/recipes/saved");
+
       if (res.status === 401) {
         setTimeout(loadSavedRecipes, 300);
         return;
@@ -192,15 +209,15 @@ export default function RecipePickerDialog({
         setSavedRecipes([]);
       }
     } catch (error) {
-      console.error('Error loading saved recipes:', error);
+      console.error("Error loading saved recipes:", error);
       setSavedRecipes([]);
     }
-  };
+  }, []);
 
-  const loadMyRecipes = async () => {
+  const loadMyRecipes = useCallback(async () => {
     setIsLoadingMyRecipes(true);
     try {
-      const res = await authedFetch('/api/recipes/create');
+      const res = await authedFetch("/api/recipes/create");
       if (res.status === 401) {
         setTimeout(loadMyRecipes, 300);
         return;
@@ -212,12 +229,12 @@ export default function RecipePickerDialog({
         setMyRecipes([]);
       }
     } catch (error) {
-      console.error('Error loading custom recipes:', error);
+      console.error("Error loading custom recipes:", error);
       setMyRecipes([]);
     } finally {
       setIsLoadingMyRecipes(false);
     }
-  };
+  }, []);
 
   // Load saved recipes when dialog opens
   useEffect(() => {
@@ -225,14 +242,14 @@ export default function RecipePickerDialog({
       loadSavedRecipes();
       loadMyRecipes();
     }
-  }, [open]);
+  }, [open, loadSavedRecipes, loadMyRecipes]);
 
   // Reset state when dialog closes
   useEffect(() => {
     if (!open) {
       resetState();
     }
-  }, [open]);
+  }, [open, resetState]);
 
   // Handle clicking on a saved recipe - need to fetch full info from API
   const handleSavedRecipeClick = async (savedRecipe: SavedRecipe) => {
@@ -243,7 +260,7 @@ export default function RecipePickerDialog({
         : `/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`;
       const response = await authedFetch(recipeDetailsUrl);
       if (!response.ok) {
-        throw new Error('Failed to fetch recipe info');
+        throw new Error("Failed to fetch recipe info");
       }
       const recipePayload = await response.json();
       const recipeInfo = isCustomRecipeId(savedRecipe.recipeId)
@@ -265,8 +282,8 @@ export default function RecipePickerDialog({
       setSelectedRecipe(recipe);
       setSelectedDays([currentDayDate]);
     } catch (error) {
-      console.error('Failed to fetch saved recipe info:', error);
-      alert('Failed to load recipe details. Please try again.');
+      console.error("Failed to fetch saved recipe info:", error);
+      alert("Failed to load recipe details. Please try again.");
     } finally {
       setIsLoadingSaved(false);
     }
@@ -276,7 +293,7 @@ export default function RecipePickerDialog({
     setSelectedRecipe({
       id: recipe.id,
       title: recipe.title,
-      image: recipe.image || '',
+      image: recipe.image || "",
       score: 0,
       servings: recipe.servings || 1,
       readyInMinutes: recipe.readyInMinutes || 30,
@@ -293,19 +310,15 @@ export default function RecipePickerDialog({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add to Days</DialogTitle>
-            <DialogDescription>
-              Choose which days to add this recipe
-            </DialogDescription>
+            <DialogDescription>Choose which days to add this recipe</DialogDescription>
           </DialogHeader>
 
           {/* Selected recipe preview */}
           <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
             {selectedRecipe.image ? (
-              <img
-                src={selectedRecipe.image}
-                alt={selectedRecipe.title}
-                className="w-20 h-20 rounded-md object-cover"
-              />
+              <div className="relative w-20 h-20 rounded-md object-cover">
+                <Image src={selectedRecipe.image} alt={selectedRecipe.title} fill />
+              </div>
             ) : (
               <div className="w-20 h-20 rounded-md bg-primary/20 flex items-center justify-center">
                 <ChefHat className="h-8 w-8 text-muted-foreground" />
@@ -330,13 +343,8 @@ export default function RecipePickerDialog({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Select Days</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSelectAll}
-                className="text-xs"
-              >
-                {selectedDays.length === availableDays.length ? 'Deselect All' : 'Select All'}
+              <Button variant="ghost" size="sm" onClick={handleSelectAll} className="text-xs">
+                {selectedDays.length === availableDays.length ? "Deselect All" : "Select All"}
               </Button>
             </div>
 
@@ -352,15 +360,15 @@ export default function RecipePickerDialog({
                     onClick={() => handleDayToggle(day.date)}
                     className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors text-left ${
                       isSelected
-                        ? 'bg-primary/10 border-primary'
-                        : 'hover:bg-muted/50 border-border'
+                        ? "bg-primary/10 border-primary"
+                        : "hover:bg-muted/50 border-border"
                     }`}
                   >
                     <div
                       className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                         isSelected
-                          ? 'bg-primary border-primary text-primary-foreground'
-                          : 'border-muted-foreground/40'
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-muted-foreground/40"
                       }`}
                     >
                       {isSelected && <Check className="h-3 w-3" />}
@@ -386,7 +394,7 @@ export default function RecipePickerDialog({
               Back
             </Button>
             <Button onClick={handleConfirm} disabled={selectedDays.length === 0}>
-              Add to {selectedDays.length} Day{selectedDays.length !== 1 ? 's' : ''}
+              Add to {selectedDays.length} Day{selectedDays.length !== 1 ? "s" : ""}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -409,11 +417,11 @@ export default function RecipePickerDialog({
         <div className="flex border-b">
           <button
             type="button"
-            onClick={() => setActiveTab('search')}
+            onClick={() => setActiveTab("search")}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'search'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              activeTab === "search"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <Search className="h-4 w-4" />
@@ -421,11 +429,11 @@ export default function RecipePickerDialog({
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('saved')}
+            onClick={() => setActiveTab("saved")}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'saved'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              activeTab === "saved"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <Heart className="h-4 w-4" />
@@ -438,11 +446,11 @@ export default function RecipePickerDialog({
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('my')}
+            onClick={() => setActiveTab("my")}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'my'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              activeTab === "my"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             <ChefHat className="h-4 w-4" />
@@ -456,7 +464,7 @@ export default function RecipePickerDialog({
         </div>
 
         {/* Search Tab Content */}
-        {activeTab === 'search' && (
+        {activeTab === "search" && (
           <>
             <div className="space-y-4 pt-4">
               <div className="flex gap-2">
@@ -502,10 +510,11 @@ export default function RecipePickerDialog({
                       className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
                       onClick={() => handleRecipeClick(recipe)}
                     >
-                      <div className="h-32 bg-gradient-to-br from-primary/20 to-muted">
-                        <img
-                          src={recipe.image || '/placeholder-recipe.png'}
+                      <div className="relative h-32 bg-gradient-to-br from-primary/20 to-muted">
+                        <Image
+                          src={recipe.image || "/placeholder-recipe.png"}
                           alt={recipe.title}
+                          fill
                           className="h-full w-full object-cover"
                         />
                       </div>
@@ -556,7 +565,7 @@ export default function RecipePickerDialog({
         )}
 
         {/* Saved Recipes Tab Content */}
-        {activeTab === 'saved' && (
+        {activeTab === "saved" && (
           <div className="flex-1 overflow-y-auto mt-4 -mx-6 px-6">
             {isLoadingSaved ? (
               <div className="flex flex-col items-center justify-center py-12">
@@ -571,11 +580,12 @@ export default function RecipePickerDialog({
                     className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
                     onClick={() => handleSavedRecipeClick(recipe)}
                   >
-                    <div className="h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
+                    <div className="relative h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
                       {getSavedRecipeImage(recipe) ? (
-                        <img
+                        <Image
                           src={getSavedRecipeImage(recipe)}
                           alt={recipe.recipeName}
+                          fill
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -601,11 +611,7 @@ export default function RecipePickerDialog({
                 <p className="text-sm text-muted-foreground mt-1">
                   Save recipes from the Recipes page to quickly add them here
                 </p>
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => setActiveTab('search')}
-                >
+                <Button variant="outline" className="mt-4" onClick={() => setActiveTab("search")}>
                   Search for Recipes
                 </Button>
               </div>
@@ -613,7 +619,7 @@ export default function RecipePickerDialog({
           </div>
         )}
 
-        {activeTab === 'my' && (
+        {activeTab === "my" && (
           <div className="flex-1 overflow-y-auto mt-4 -mx-6 px-6">
             {isLoadingMyRecipes ? (
               <div className="flex flex-col items-center justify-center py-12">
@@ -628,11 +634,12 @@ export default function RecipePickerDialog({
                     className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
                     onClick={() => handleMyRecipeClick(recipe)}
                   >
-                    <div className="h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
+                    <div className="relative h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
                       {recipe.image ? (
-                        <img
+                        <Image
                           src={recipe.image}
                           alt={recipe.title}
+                          fill
                           className="h-full w-full object-cover"
                         />
                       ) : (
