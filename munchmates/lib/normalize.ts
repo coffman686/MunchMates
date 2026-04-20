@@ -36,18 +36,18 @@ async function loadJsonBr(file: string) {
   return JSON.parse(buffer)
 }
 
-export function smashed_case(item: NFKDSanitizedItem): NFKDSanitizedItem {
+function smashed_case(item: NFKDSanitizedItem): NFKDSanitizedItem {
   // Remove all remaining whitespace
   const whitespace = /\s/g;
   return item.toLocaleLowerCase().replaceAll(whitespace, "");
 }
 
 
-export function sanitize(item: string): NFKDSanitizedItem {
+function sanitize(item: string): NFKDSanitizedItem {
   return item.normalize("NFKD").trim();
 }
 
-export function nlpProcess(item: string): NLPProcessedItem {
+function nlpProcess(item: string): NLPProcessedItem {
   // processing performs as much NLP-based normalization as possible
   // depluralization, deconstructing adjectives and verbs, etc
   const processed = nlp(item).normalize("heavy").text();
@@ -66,7 +66,7 @@ export function nlpProcess(item: string): NLPProcessedItem {
   return item
 }
 
-export function canonical(item: NLPProcessedItem): CanonicalName {
+function canonical(item: NLPProcessedItem): CanonicalName {
   // Resolves issues with characters mapping to an intermediary that were missed during the NFKC processing
   const lowercase: string = item.toLocaleLowerCase();
 

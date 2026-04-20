@@ -1,12 +1,10 @@
 // Dietary.tsx
-// Dialog for selecting user diet as well allegens/intolerances
-// Features:
-// - Uses local storage for storing data persistently
-// - Offers options directly supported by spoonacular
+// Dialog for selecting user diet and allergens/intolerances.
+// Controlled component — parent owns state and persists via /api/profile.
 
 'use client';
 
-import { Dispatch, SetStateAction, useEffect } from "react";
+import { Dispatch, SetStateAction } from "react";
 import { Button } from "../ui/button";
 
 const allDiets = [
@@ -56,25 +54,6 @@ function DietaryDialog({
   intolerances,
   setIntolerances,
 }: DietaryDialogProps) {
-
-  // save preferences on update
-  useEffect(() => {
-    const localDiets = localStorage.getItem("diets");
-    if (localDiets) {
-      setDiets(JSON.parse(localDiets));
-    }
-
-    const localIntolerances = localStorage.getItem("intolerances");
-    if (localIntolerances) {
-      setIntolerances(JSON.parse(localIntolerances));
-    }
-  }, [setDiets, setIntolerances]);
-
-  // initialize data from local storage
-  useEffect(() => {
-    localStorage.setItem("diets", JSON.stringify(diets));
-    localStorage.setItem("intolerances", JSON.stringify(intolerances));
-  }, [diets, intolerances]);
 
   // add or remove an item from preferences on user selection
   function toggleItem(item: string, setItems: Dispatch<SetStateAction<string[]>>) {
@@ -146,20 +125,4 @@ function DietaryDialog({
   );
 }
 
-// get diets from local storage
-function getDiets() {
-  const localDiets = localStorage.getItem("diets");
-  if (localDiets) {
-    return JSON.parse(localDiets).join(",");
-  }
-}
-
-// get intolerances from local storage
-function getIntolerances() {
-  const localIntolerances = localStorage.getItem("intolerances");
-  if (localIntolerances) {
-    return JSON.parse(localIntolerances).join(",");
-  }
-}
-
-export { DietaryDialog, getDiets, getIntolerances }
+export { DietaryDialog }

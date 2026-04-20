@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { ensureUserExists } from "@/lib/user-service";
+import { parsePositiveInt } from "@/lib/sanitize";
 
 export async function POST(req: NextRequest) {
     try {
@@ -17,14 +19,14 @@ export async function POST(req: NextRequest) {
         const userId = String(p.sub);
 
         const body = await req.json().catch(() => null);
-        const recipeId = Number(body?.recipeId);
+        const recipeId = parsePositiveInt(body?.recipeId);
         const recipeName = typeof body?.recipeName === "string" ? body.recipeName.trim() : "";
         const recipeImage =
             typeof body?.recipeImage === "string" && body.recipeImage.trim() !== ""
                 ? body.recipeImage.trim()
                 : null;
 
-        if (!Number.isFinite(recipeId) || recipeId <= 0 || !recipeName) {
+        if (recipeId === null || !recipeName) {
             return errorResponse(400, "Missing required fields: recipeId and recipeName");
         }
 
@@ -40,12 +42,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: userId },
-            update: {},
-            create: { id: userId },
-        });
+        await ensureUserExists(userId);
 
         const newSavedRecipe = await prisma.savedRecipe.create({
             data: { userId, recipeId, recipeName, recipeImage },
@@ -109,8 +106,8 @@ export async function DELETE(req: NextRequest) {
             return errorResponse(400, "Missing recipeId parameter");
         }
 
-        const numericRecipeId = Number(recipeId);
-        if (!Number.isFinite(numericRecipeId) || numericRecipeId <= 0) {
+        const numericRecipeId = parsePositiveInt(recipeId);
+        if (numericRecipeId === null) {
             return errorResponse(400, "Invalid recipeId parameter");
         }
 

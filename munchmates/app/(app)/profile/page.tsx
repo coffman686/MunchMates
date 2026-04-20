@@ -13,10 +13,11 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/layout/app-sidebar";
 import {
     initKeycloak,
-    ensureToken,
     getAccessTokenClaims,
     logout,
 } from "@/lib/keycloak";
+import { authedFetch } from "@/lib/authedFetch";
+import { setDietaryPrefs } from "@/lib/dietary-prefs";
 import { LogOut, User, ShieldAlert, Trash2, Save, Leaf, AlertTriangle, Globe } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -96,14 +97,6 @@ const ProfilePage = () => {
     const [dailyCarbGoal, setDailyCarbGoal] = useState("");
     const [dailyFatGoal, setDailyFatGoal] = useState("");
 
-    // Load diets/intolerances from localStorage on mount
-    useEffect(() => {
-        const localDiets = localStorage.getItem("diets");
-        if (localDiets) setDiets(JSON.parse(localDiets));
-        const localIntolerances = localStorage.getItem("intolerances");
-        if (localIntolerances) setIntolerances(JSON.parse(localIntolerances));
-    }, []);
-
     useEffect(() => {
         let mounted = true;
         (async () => {
@@ -127,11 +120,7 @@ const ProfilePage = () => {
         if (!authReady) return;
         const loadProfile = async () => {
             try {
-                const token = await ensureToken();
-                if (!token) return;
-                const res = await fetch("/api/profile", {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+                const res = await authedFetch("/api/profile");
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.favoriteCuisines) {
@@ -157,16 +146,8 @@ const ProfilePage = () => {
         e.preventDefault();
         setSaving(true);
         try {
-            // Sync to localStorage for other components that read from there
-            localStorage.setItem("diets", JSON.stringify(diets));
-            localStorage.setItem("intolerances", JSON.stringify(intolerances));
-
-            const token = await ensureToken();
-            const headers: Record<string, string> = { "Content-Type": "application/json" };
-            if (token) headers.Authorization = `Bearer ${token}`;
-            const res = await fetch("/api/profile", {
+            const res = await authedFetch("/api/profile", {
                 method: "POST",
-                headers,
                 body: JSON.stringify({
                     favoriteCuisines: favoriteCuisines.join(", "),
                     diets,
@@ -178,6 +159,7 @@ const ProfilePage = () => {
                 }),
             });
             if (!res.ok) { setSaving(false); return; }
+            setDietaryPrefs({ diets, intolerances });
             setSaving(false);
         } catch (err) {
             console.error("Error saving profile", err);
@@ -192,10 +174,7 @@ const ProfilePage = () => {
         if (!confirmed) return;
         try {
             setDeleting(true);
-            const token = await ensureToken();
-            const headers: Record<string, string> = {};
-            if (token) headers.Authorization = `Bearer ${token}`;
-            const res = await fetch("/api/account", { method: "DELETE", headers });
+            const res = await authedFetch("/api/account", { method: "DELETE" });
             if (!res.ok) { setDeleting(false); return; }
             await logout(window.location.origin);
         } catch (err) {

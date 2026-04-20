@@ -1,5 +1,6 @@
 import { normalize } from "@/lib/normalize";
 import { parseQuantity } from "@/lib/parseQuantity";
+import type { PantryItem } from "@/lib/types/pantry";
 import {
   convertToBase,
   COUNT_MULTIPLIERS,
@@ -20,17 +21,7 @@ export interface PantryItemRecord {
   addedAt: Date;
 }
 
-export interface PantryResponseItem {
-  id: number;
-  name: string;
-  canonName: string;
-  quantity: string;
-  amount: number | null;
-  unit: string;
-  category: string;
-  expiryDate: string | null;
-  addedAt: string;
-}
+export type PantryResponseItem = PantryItem;
 
 export interface PantryIngredientInput {
   name: string;
@@ -38,7 +29,7 @@ export interface PantryIngredientInput {
   unit: string;
 }
 
-export interface PantryIngredientMatch {
+interface PantryIngredientMatch {
   ingredientIndex: number;
   ingredientName: string;
   ingredientAmount: number;

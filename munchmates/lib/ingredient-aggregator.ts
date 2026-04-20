@@ -83,7 +83,7 @@ function isToTaste(originalString: string): boolean {
 // Fetch recipe information via API route (client-safe)
 async function fetchRecipeInfo(recipeId: number): Promise<RecipeInfo | null> {
   try {
-    const response = await fetch(`/api/spoonacular/recipes/info?id=${recipeId}`);
+    const response = await fetch(`/api/spoonacular/recipes/info?id=${recipeId}&normalize=true`);
     if (!response.ok) {
       console.error(`Failed to fetch recipe ${recipeId}: ${response.status}`);
       return null;

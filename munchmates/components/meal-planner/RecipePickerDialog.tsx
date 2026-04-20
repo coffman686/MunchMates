@@ -19,26 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Search, Clock, Users, ChefHat, Loader2, ArrowLeft, Check, Heart } from 'lucide-react';
-import { getDiets, getIntolerances } from '@/components/ingredients/Dietary';
+import { ensureDietaryPrefsLoaded, getDiets, getIntolerances } from '@/lib/dietary-prefs';
 import { authedFetch } from '@/lib/authedFetch';
-
-interface Recipe {
-  id: number;
-  title: string;
-  image: string;
-  score: number;
-  servings: number;
-  readyInMinutes: number;
-  cuisines: string[];
-  dishTypes: string[];
-}
-
-interface SavedRecipe {
-  recipeId: number;
-  recipeName: string;
-  recipeImage?: string;
-  savedAt: string;
-}
+import type { SavedRecipe, RecipeSearchResult as Recipe } from '@/lib/types/recipe';
 
 const getSavedRecipeImage = (recipe: SavedRecipe) => {
   if (recipe.recipeImage) return recipe.recipeImage;
@@ -102,12 +85,13 @@ export default function RecipePickerDialog({
     setIsLoading(true);
     setHasSearched(true);
 
+    await ensureDietaryPrefsLoaded();
     const diet = getDiets();
     const intolerances = getIntolerances();
     const dishType = selectedDishType !== 'All' ? selectedDishType : undefined;
 
     try {
-      const response = await fetch(
+      const response = await authedFetch(
         `/api/spoonacular/recipes/searchByIngredient?ingredients=${encodeURIComponent(query)}&dishType=${dishType || ''}&diet=${diet}&intolerances=${intolerances}`
       );
       const data = await response.json();
@@ -215,7 +199,7 @@ export default function RecipePickerDialog({
     setIsLoadingSaved(true);
     try {
       // Fetch full recipe info from Spoonacular API
-      const response = await fetch(`/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`);
+      const response = await authedFetch(`/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch recipe info');
       }

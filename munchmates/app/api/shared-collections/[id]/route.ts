@@ -12,6 +12,7 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
+import { parsePositiveInt } from "@/lib/sanitize";
 
 type RouteContext = {
     params: Promise<{ id: string }>;
@@ -97,8 +98,8 @@ export async function PUT(req: NextRequest, context: RouteContext) {
                     return errorResponse(400, "recipeId and recipeName are required");
                 }
 
-                const numericRecipeId = Number(recipeId);
-                if (!Number.isFinite(numericRecipeId)) {
+                const numericRecipeId = parsePositiveInt(recipeId);
+                if (numericRecipeId === null) {
                     return errorResponse(400, "recipeId must be a valid number");
                 }
 

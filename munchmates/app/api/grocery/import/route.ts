@@ -8,6 +8,8 @@ import { formatQuantity, mergeQuantityStrings } from "@/lib/grocery-consolidatio
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { normalize } from "@/lib/normalize";
+import { ensureUserExists } from "@/lib/user-service";
+import { sanitizeString } from "@/lib/sanitize";
 
 interface AggregatedIngredient {
     name: string;
@@ -29,12 +31,7 @@ export async function POST(req: NextRequest) {
 
         const aggregatedItems: AggregatedIngredient[] = body.items;
 
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
-        });
+        await ensureUserExists(p.sub);
 
         // Get existing items for this user
         const existingItems = await prisma.groceryItem.findMany({
@@ -87,7 +84,7 @@ export async function POST(req: NextRequest) {
         let filteredCount = 0;
 
         for (const ingredient of aggregatedItems) {
-            const name = String(ingredient.name).trim().slice(0, 200);
+            const name = sanitizeString(ingredient.name, 200);
             const nameLower = normalize(name);
 
             // Skip items the user already has in their pantry

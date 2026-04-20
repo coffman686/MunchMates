@@ -1169,23 +1169,10 @@ export const getApiDocs = async () => {
                     get: {
                         tags: ["Recipe Info"],
                         summary: "Get recipe information",
-                        description: "Fetches full recipe details from Spoonacular. Normalizes ingredient names for pantry matching.",
+                        description: "Fetches full recipe details from Spoonacular. Pass normalize=true to normalize extendedIngredients[].name for pantry/canonName matching (originals preserved as originalName).",
                         parameters: [
                             { name: "id", in: "query", required: true, schema: { type: "integer" } },
-                        ],
-                        responses: {
-                            200: { description: "Recipe details" },
-                            400: { description: "Missing id" },
-                        },
-                    },
-                },
-                "/api/recipes/information": {
-                    get: {
-                        tags: ["Recipe Info"],
-                        summary: "Get recipe information (alternate)",
-                        description: "Same as /api/recipes/info but includes 402 handling for API limit.",
-                        parameters: [
-                            { name: "id", in: "query", required: true, schema: { type: "integer" } },
+                            { name: "normalize", in: "query", required: false, schema: { type: "boolean" } },
                         ],
                         responses: {
                             200: { description: "Recipe details" },

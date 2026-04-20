@@ -12,6 +12,7 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { formatCollection } from "@/lib/formatCollection";
+import { ensureUserExists } from "@/lib/user-service";
 
 // GET - List all collections the user is a member of
 export async function GET(req: NextRequest) {
@@ -53,12 +54,7 @@ export async function POST(req: NextRequest) {
             return errorResponse(400, "Collection name is required");
         }
 
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: userId },
-            update: {},
-            create: { id: userId },
-        });
+        await ensureUserExists(userId);
 
         const collection = await prisma.sharedCollection.create({
             data: {

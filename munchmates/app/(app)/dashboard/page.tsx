@@ -44,6 +44,10 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { authedFetch } from '@/lib/authedFetch';
 import { ensureToken, getAccessTokenClaims, getParsedIdToken, keycloak } from '@/lib/keycloak';
 import type { NutritionDaySummary, NutritionMetricProgress } from '@/lib/types/meal-plan';
+import type { PantryItem } from '@/lib/types/pantry';
+import type { GroceryItem } from '@/lib/types/grocery';
+import type { PopularRecipe } from '@/lib/types/recipe';
+import { ensureDietaryPrefsLoaded, setDietaryPrefs } from '@/lib/dietary-prefs';
 
 // initialize types
 type IdClaims = { name?: string; preferred_username?: string; email?: string };
@@ -71,35 +75,6 @@ interface DayPlan {
 interface WeeklyMealPlan {
     weekStart: string;
     days: DayPlan[];
-}
-
-// Pantry items
-interface PantryItem {
-    id: number;
-    name: string;
-    quantity: string;
-    category: string;
-    expiryDate?: string | null;
-    addedAt: string;
-}
-
-// Grocery list items
-interface GroceryItem {
-    id: number;
-    name: string;
-    category: string;
-    completed: boolean;
-    quantity?: string;
-    fromMealPlan?: boolean;
-}
-
-// Popular recipes from Spoonacular
-interface PopularRecipe {
-    id: number;
-    title: string;
-    image?: string;
-    readyInMinutes?: number;
-    servings?: number;
 }
 
 interface NutritionProgressDial {
@@ -247,17 +222,40 @@ export default function Dashboard() {
     // nutrition widget
     const [nutritionProgress, setNutritionProgress] = useState<NutritionProgressDial[]>(makeNutritionDials(null));
 
-    // Open dietary preferences modal if uninitialized
+    // Hydrate dietary prefs from API; open the first-run modal if uninitialized
     useEffect(() => {
+        ensureDietaryPrefsLoaded().then((prefs) => {
+            setDiets(prefs.diets);
+            setIntolerances(prefs.intolerances);
+        });
         const localDietsInit = localStorage.getItem("hasDietsInit");
         if (localDietsInit !== "true") {
             setDietModal(true);
         }
     }, []);
 
-    // Close preferences modal and complete initialization
-    function closeDiet(e: React.SyntheticEvent) {
+    // Persist preferences to /api/profile on close, update cache, mark first-run done.
+    // Fetches current profile first so we don't wipe favoriteCuisines / calorie goals
+    // (the POST endpoint replaces all fields).
+    async function closeDiet(e: React.SyntheticEvent) {
         e.preventDefault();
+        try {
+            const current = await authedFetch("/api/profile");
+            const profile = current.ok ? await current.json() : {};
+            await authedFetch("/api/profile", {
+                method: "POST",
+                body: JSON.stringify({
+                    favoriteCuisines: profile.favoriteCuisines ?? "",
+                    dailyCalorieGoal: profile.dailyCalorieGoal ?? null,
+                    dailyProteinGoal: profile.dailyProteinGoal ?? null,
+                    dailyCarbGoal: profile.dailyCarbGoal ?? null,
+                    dailyFatGoal: profile.dailyFatGoal ?? null,
+                    diets,
+                    intolerances,
+                }),
+            });
+            setDietaryPrefs({ diets, intolerances });
+        } catch { /* swallow — UI flag still set so the modal does not loop */ }
         localStorage.setItem("hasDietsInit", "true");
         setDietModal(false);
     }
@@ -470,7 +468,7 @@ export default function Dashboard() {
                 date: formatLocalDateStr(new Date()),
                 offset: o,
             }));
-            const res = await fetch(`/api/spoonacular/recipes/popular?offset=${o}`);
+            const res = await authedFetch(`/api/spoonacular/recipes/popular?offset=${o}`);
             if (res.ok) {
                 const data = await res.json();
                 setPopularRecipes((data.recipes || []).slice(0, 8));
