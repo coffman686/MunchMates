@@ -44,6 +44,7 @@ type NutritionInfo = {
 };
 
 function formatMacroValue(value?: number): string {
+  if (value == null) return "0";
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
 }
 

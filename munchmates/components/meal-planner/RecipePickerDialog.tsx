@@ -266,6 +266,10 @@ export default function RecipePickerDialog({
         recipeInfo = await spoonacularResponse.json();
       }
 
+      if (!recipeInfo) {
+        throw new Error('Recipe not found');
+      }
+
       // Convert to Recipe format for the day selection flow
       const recipe: Recipe = {
         id: recipeInfo.id || savedRecipe.recipeId,

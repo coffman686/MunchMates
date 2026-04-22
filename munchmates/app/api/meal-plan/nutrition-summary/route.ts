@@ -7,7 +7,10 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { getRecipeNutrition } from "@/lib/spoonacular";
-import { loadCustomRecipeMacrosByIds } from "@/lib/customRecipeMacros";
+import {
+    loadCustomRecipeMacrosByIds,
+    type CustomRecipeMacros,
+} from "@/lib/customRecipeMacros";
 import {
     emptyNutrition,
     addNutrition,
@@ -25,10 +28,6 @@ type MealRow = {
     servings: number;
     originalServings: number;
 };
-
-const CUSTOM_RECIPE_ID_START = 100000;
-
-const isCustomRecipeId = (recipeId: number) => recipeId >= CUSTOM_RECIPE_ID_START;
 
 export async function GET(req: NextRequest) {
     try {
@@ -60,14 +59,14 @@ export async function GET(req: NextRequest) {
             dailyFatGoal: profile?.dailyFatGoal ?? null,
         };
 
-        const customRecipeIds = Array.from(
-            new Set(
-                mealPlan.meals
-                    .map((meal) => meal.recipeId)
-                    .filter((recipeId) => isCustomRecipeId(recipeId))
+        const uniqueRecipeIds: number[] = Array.from(
+            new Set<number>(
+                mealPlan.meals.map((meal: { recipeId: number }) => meal.recipeId)
             )
         );
-        const customNutritionByRecipeId = await loadCustomRecipeMacrosByIds(customRecipeIds);
+        const customNutritionByRecipeId = (await loadCustomRecipeMacrosByIds(
+            uniqueRecipeIds
+        )) as Map<number, CustomRecipeMacros>;
 
         const mealsByDate = new Map<string, MealRow[]>();
 
@@ -102,11 +101,18 @@ export async function GET(req: NextRequest) {
                 const mealBreakdown = await Promise.all(
                     meals.map(async (meal) => {
                         try {
-                            const baseNutrition: MacroTotals = isCustomRecipeId(meal.recipeId)
-                                ? customNutritionByRecipeId.get(meal.recipeId) ?? emptyNutrition()
-                                : (() => emptyNutrition())();
+                            const isCustomRecipe = customNutritionByRecipeId.has(meal.recipeId);
+                            const customMacros = customNutritionByRecipeId.get(meal.recipeId);
+                            const baseNutrition: MacroTotals = isCustomRecipe
+                                ? {
+                                    calories: customMacros?.calories ?? 0,
+                                    protein: customMacros?.protein ?? 0,
+                                    carbs: customMacros?.carbs ?? 0,
+                                    fat: customMacros?.fat ?? 0,
+                                }
+                                : emptyNutrition();
 
-                            if (!isCustomRecipeId(meal.recipeId)) {
+                            if (!isCustomRecipe) {
                                 const nutrition = await getRecipeNutrition(meal.recipeId);
                                 baseNutrition.calories = parseNutritionNumber(nutrition.calories);
                                 baseNutrition.protein = parseNutritionNumber(nutrition.protein);
