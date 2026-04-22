@@ -14,11 +14,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import {
+    loadCustomRecipeMacrosByIds,
+    persistCustomRecipeMacros,
+    type CustomRecipeMacros,
+} from "@/lib/customRecipeMacros";
 
 type RecipePayloadBody = {
     title?: unknown;
     servings?: unknown;
     readyInMinutes?: unknown;
+    calories?: unknown;
+    protein?: unknown;
+    carbs?: unknown;
+    fat?: unknown;
     dishTypes?: unknown;
     cuisines?: unknown;
     ingredients?: unknown;
@@ -28,8 +37,14 @@ type RecipePayloadBody = {
     structuredIngredients?: unknown;
 };
 
+function parseOptionalNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 function parseRecipePayload(body: RecipePayloadBody) {
-    const { title, servings, readyInMinutes, dishTypes, cuisines, ingredients, instructions, image, summary } = body;
+    const { title, servings, readyInMinutes, calories, protein, carbs, fat, dishTypes, cuisines, ingredients, instructions, image, summary } = body;
 
     if (!title || typeof title !== "string" || !title.trim()) {
         return { error: errorResponse(400, "Recipe title is required") } as const;
@@ -75,6 +90,12 @@ function parseRecipePayload(body: RecipePayloadBody) {
             image: typeof image === "string" && image.trim() ? image.trim() : null,
             summary: typeof summary === "string" && summary.trim() ? summary.trim() : null,
         },
+        macroData: {
+            calories: parseOptionalNumber(calories),
+            protein: parseOptionalNumber(protein),
+            carbs: parseOptionalNumber(carbs),
+            fat: parseOptionalNumber(fat),
+        } satisfies CustomRecipeMacros,
         structuredIngredients,
     } as const;
 }
@@ -110,6 +131,7 @@ export async function POST(req: NextRequest) {
         }
 
         const newRecipe = await prisma.customRecipe.create({ data });
+        await persistCustomRecipeMacros(newRecipe.id, parsed.macroData);
 
         // Match original response shape
         const recipe = {
@@ -118,6 +140,10 @@ export async function POST(req: NextRequest) {
             title: newRecipe.title,
             servings: newRecipe.servings,
             readyInMinutes: newRecipe.readyInMinutes,
+            calories: parsed.macroData.calories ?? undefined,
+            protein: parsed.macroData.protein ?? undefined,
+            carbs: parsed.macroData.carbs ?? undefined,
+            fat: parsed.macroData.fat ?? undefined,
             dishTypes: newRecipe.dishTypes,
             cuisines: newRecipe.cuisines,
             ingredients: newRecipe.ingredients,
@@ -173,6 +199,7 @@ export async function PUT(req: NextRequest) {
             where: { id },
             data,
         });
+        await persistCustomRecipeMacros(updatedRecipe.id, parsed.macroData);
 
         return NextResponse.json({
             ok: true,
@@ -184,6 +211,10 @@ export async function PUT(req: NextRequest) {
                 title: updatedRecipe.title,
                 servings: updatedRecipe.servings,
                 readyInMinutes: updatedRecipe.readyInMinutes,
+                calories: parsed.macroData.calories ?? undefined,
+                protein: parsed.macroData.protein ?? undefined,
+                carbs: parsed.macroData.carbs ?? undefined,
+                fat: parsed.macroData.fat ?? undefined,
                 dishTypes: updatedRecipe.dishTypes,
                 cuisines: updatedRecipe.cuisines,
                 ingredients: updatedRecipe.ingredients,
@@ -219,7 +250,7 @@ function mapToRecipeInfo(r: {
         unit: string;
         original: string;
     }>;
-}) {
+}, macros?: CustomRecipeMacros) {
     const extendedIngredients = r.structuredIngredients && r.structuredIngredients.length > 0
         ? r.structuredIngredients.map((si) => ({
             id: si.id,
@@ -243,6 +274,10 @@ function mapToRecipeInfo(r: {
         summary: r.summary ?? undefined,
         readyInMinutes: r.readyInMinutes,
         servings: r.servings,
+        calories: macros?.calories ?? undefined,
+        protein: macros?.protein ?? undefined,
+        carbs: macros?.carbs ?? undefined,
+        fat: macros?.fat ?? undefined,
         cuisines: r.cuisines,
         dishTypes: r.dishTypes,
         instructions: r.instructions,
@@ -274,7 +309,8 @@ export async function GET(req: NextRequest) {
                 return errorResponse(404, "Recipe not found");
             }
 
-            return NextResponse.json({ ok: true, recipe: mapToRecipeInfo(recipe) });
+            const macroMap = await loadCustomRecipeMacrosByIds([id]);
+            return NextResponse.json({ ok: true, recipe: mapToRecipeInfo(recipe, macroMap.get(id)) });
         }
 
         // List all recipes for the authenticated user
@@ -284,6 +320,7 @@ export async function GET(req: NextRequest) {
         const recipes = await prisma.customRecipe.findMany({
             where: { userId },
         });
+        const macroMap = await loadCustomRecipeMacrosByIds(recipes.map((recipe) => recipe.id));
 
         return NextResponse.json({
             ok: true,
@@ -293,6 +330,10 @@ export async function GET(req: NextRequest) {
                 title: r.title,
                 servings: r.servings,
                 readyInMinutes: r.readyInMinutes,
+                calories: macroMap.get(r.id)?.calories ?? undefined,
+                protein: macroMap.get(r.id)?.protein ?? undefined,
+                carbs: macroMap.get(r.id)?.carbs ?? undefined,
+                fat: macroMap.get(r.id)?.fat ?? undefined,
                 dishTypes: r.dishTypes,
                 cuisines: r.cuisines,
                 ingredients: r.ingredients,

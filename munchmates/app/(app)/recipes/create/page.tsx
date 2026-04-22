@@ -55,6 +55,9 @@ interface StructuredIngredient {
     unit: string;
 }
 
+const formatMacroInput = (value?: number | null) =>
+    value == null || Number.isNaN(value) ? '' : String(value);
+
 const getErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error && error.message ? error.message : fallback;
 
@@ -68,6 +71,10 @@ export default function CreateRecipePage() {
     const [title, setTitle] = useState('');
     const [readyInMinutes, setReadyInMinutes] = useState(30);
     const [servings, setServings] = useState(1);
+    const [calories, setCalories] = useState('');
+    const [protein, setProtein] = useState('');
+    const [carbs, setCarbs] = useState('');
+    const [fat, setFat] = useState('');
     const [dishType, setDishType] = useState('main course');
     const [cuisine, setCuisine] = useState('American');
     const [ingredients, setIngredients] = useState<StructuredIngredient[]>([]);
@@ -119,6 +126,10 @@ export default function CreateRecipePage() {
                 setTitle(recipe.title || '');
                 setReadyInMinutes(recipe.readyInMinutes || 30);
                 setServings(recipe.servings || 1);
+                setCalories(formatMacroInput(recipe.calories));
+                setProtein(formatMacroInput(recipe.protein));
+                setCarbs(formatMacroInput(recipe.carbs));
+                setFat(formatMacroInput(recipe.fat));
                 setDishType(recipe.dishTypes?.[0] || 'main course');
                 setCuisine(recipe.cuisines?.[0] || 'American');
                 setIngredients(
@@ -265,6 +276,10 @@ export default function CreateRecipePage() {
                     title: title.trim(),
                     servings,
                     readyInMinutes,
+                    calories: calories.trim() || undefined,
+                    protein: protein.trim() || undefined,
+                    carbs: carbs.trim() || undefined,
+                    fat: fat.trim() || undefined,
                     dishTypes: [dishType],
                     cuisines: [cuisine],
                     ingredients: ingredientStrings,
@@ -496,6 +511,74 @@ export default function CreateRecipePage() {
                         rows={3}
                         className="w-full rounded-xl border bg-background px-4 py-3 text-muted-foreground leading-7 text-[15px] resize-none outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors placeholder:text-muted-foreground/40"
                     />
+                </div>
+            </div>
+
+            {/* Macros Per Serving */}
+            <div className="px-4 sm:px-6 lg:px-8 pb-2">
+                <div className="rounded-2xl border bg-muted/40 p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-3">Macros Per Serving</h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Optional values for calories, protein, carbs, and fat. These will be used on the recipe page and in meal plan nutrition totals.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                            <label htmlFor="recipe-calories" className="text-sm font-medium text-foreground">
+                                Calories
+                            </label>
+                            <Input
+                                id="recipe-calories"
+                                type="number"
+                                min={0}
+                                step="1"
+                                placeholder="e.g. 420"
+                                value={calories}
+                                onChange={(e) => setCalories(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor="recipe-protein" className="text-sm font-medium text-foreground">
+                                Protein (g)
+                            </label>
+                            <Input
+                                id="recipe-protein"
+                                type="number"
+                                min={0}
+                                step="0.1"
+                                placeholder="e.g. 32"
+                                value={protein}
+                                onChange={(e) => setProtein(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor="recipe-carbs" className="text-sm font-medium text-foreground">
+                                Carbs (g)
+                            </label>
+                            <Input
+                                id="recipe-carbs"
+                                type="number"
+                                min={0}
+                                step="0.1"
+                                placeholder="e.g. 18"
+                                value={carbs}
+                                onChange={(e) => setCarbs(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor="recipe-fat" className="text-sm font-medium text-foreground">
+                                Fat (g)
+                            </label>
+                            <Input
+                                id="recipe-fat"
+                                type="number"
+                                min={0}
+                                step="0.1"
+                                placeholder="e.g. 14"
+                                value={fat}
+                                onChange={(e) => setFat(e.target.value)}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 

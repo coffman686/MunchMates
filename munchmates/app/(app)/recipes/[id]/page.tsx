@@ -43,12 +43,39 @@ type NutritionInfo = {
   protein: string;
 };
 
+function formatMacroValue(value?: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function getCustomNutrition(recipe: RecipeInfo | null): NutritionInfo | null {
+  if (!recipe) return null;
+
+  const hasAnyMacro =
+    recipe.calories != null ||
+    recipe.protein != null ||
+    recipe.carbs != null ||
+    recipe.fat != null;
+
+  if (!hasAnyMacro) return null;
+
+  return {
+    calories: recipe.calories != null ? formatMacroValue(recipe.calories) : "0",
+    protein: recipe.protein != null ? `${formatMacroValue(recipe.protein)}g` : "0g",
+    carbs: recipe.carbs != null ? `${formatMacroValue(recipe.carbs)}g` : "0g",
+    fat: recipe.fat != null ? `${formatMacroValue(recipe.fat)}g` : "0g",
+  };
+}
+
 type RecipeInfo = {
   id: number;
   title: string;
   image?: string;
   readyInMinutes?: number;
   servings?: number;
+  calories?: number;
+  carbs?: number;
+  fat?: number;
+  protein?: number;
   sourceUrl?: string;
   spoonacularScore?: number;
   cuisines?: string[];
@@ -315,6 +342,7 @@ export default function RecipeDetailPage() {
             authedFetch("/api/recipes/saved"),
           ]);
           setRecipe(data.recipe);
+          setNutrition(getCustomNutrition(data.recipe));
           setDisplayServings(data.recipe.servings || 1);
 
           // Parse numbered instructions into structured steps

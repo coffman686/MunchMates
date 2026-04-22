@@ -7,6 +7,7 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { getRecipeNutrition } from "@/lib/spoonacular";
+import { loadCustomRecipeMacrosByIds } from "@/lib/customRecipeMacros";
 import {
     emptyNutrition,
     addNutrition,
@@ -24,6 +25,10 @@ type MealRow = {
     servings: number;
     originalServings: number;
 };
+
+const CUSTOM_RECIPE_ID_START = 100000;
+
+const isCustomRecipeId = (recipeId: number) => recipeId >= CUSTOM_RECIPE_ID_START;
 
 export async function GET(req: NextRequest) {
     try {
@@ -54,6 +59,15 @@ export async function GET(req: NextRequest) {
             dailyCarbGoal: profile?.dailyCarbGoal ?? null,
             dailyFatGoal: profile?.dailyFatGoal ?? null,
         };
+
+        const customRecipeIds = Array.from(
+            new Set(
+                mealPlan.meals
+                    .map((meal) => meal.recipeId)
+                    .filter((recipeId) => isCustomRecipeId(recipeId))
+            )
+        );
+        const customNutritionByRecipeId = await loadCustomRecipeMacrosByIds(customRecipeIds);
 
         const mealsByDate = new Map<string, MealRow[]>();
 
@@ -88,15 +102,17 @@ export async function GET(req: NextRequest) {
                 const mealBreakdown = await Promise.all(
                     meals.map(async (meal) => {
                         try {
-                            // Minimal implementation assumes stored meal IDs are Spoonacular recipes.
-                            const nutrition = await getRecipeNutrition(meal.recipeId);
+                            const baseNutrition: MacroTotals = isCustomRecipeId(meal.recipeId)
+                                ? customNutritionByRecipeId.get(meal.recipeId) ?? emptyNutrition()
+                                : (() => emptyNutrition())();
 
-                            const baseNutrition: MacroTotals = {
-                                calories: parseNutritionNumber(nutrition.calories),
-                                protein: parseNutritionNumber(nutrition.protein),
-                                carbs: parseNutritionNumber(nutrition.carbs),
-                                fat: parseNutritionNumber(nutrition.fat),
-                            };
+                            if (!isCustomRecipeId(meal.recipeId)) {
+                                const nutrition = await getRecipeNutrition(meal.recipeId);
+                                baseNutrition.calories = parseNutritionNumber(nutrition.calories);
+                                baseNutrition.protein = parseNutritionNumber(nutrition.protein);
+                                baseNutrition.carbs = parseNutritionNumber(nutrition.carbs);
+                                baseNutrition.fat = parseNutritionNumber(nutrition.fat);
+                            }
 
                             const factor =
                                 meal.originalServings && meal.originalServings > 0

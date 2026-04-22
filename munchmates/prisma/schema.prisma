@@ -62,6 +62,10 @@ model CustomRecipe {
   title          String
   servings       Int      @default(1)
   readyInMinutes Int      @default(30)
+  calories       Float?
+  protein        Float?
+  carbs          Float?
+  fat            Float?
   dishTypes      String[] @default(["main course"])
   cuisines       String[] @default(["American"])
   ingredients    String[]
