@@ -40,9 +40,13 @@ interface SavedRecipe {
   savedAt: string;
 }
 
+const CUSTOM_RECIPE_ID_START = 100000;
+
+const isCustomRecipeId = (recipeId: number) => recipeId >= CUSTOM_RECIPE_ID_START;
+
 const getSavedRecipeImage = (recipe: SavedRecipe) => {
   if (recipe.recipeImage) return recipe.recipeImage;
-  return recipe.recipeId < 100000
+  return !isCustomRecipeId(recipe.recipeId)
     ? `https://img.spoonacular.com/recipes/${recipe.recipeId}-636x393.jpg`
     : '';
 };
@@ -214,12 +218,17 @@ export default function RecipePickerDialog({
   const handleSavedRecipeClick = async (savedRecipe: SavedRecipe) => {
     setIsLoadingSaved(true);
     try {
-      // Fetch full recipe info from Spoonacular API
-      const response = await fetch(`/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`);
+      const recipeDetailsUrl = isCustomRecipeId(savedRecipe.recipeId)
+        ? `/api/recipes/create?id=${savedRecipe.recipeId}`
+        : `/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`;
+      const response = await authedFetch(recipeDetailsUrl);
       if (!response.ok) {
         throw new Error('Failed to fetch recipe info');
       }
-      const recipeInfo = await response.json();
+      const recipePayload = await response.json();
+      const recipeInfo = isCustomRecipeId(savedRecipe.recipeId)
+        ? recipePayload.recipe
+        : recipePayload;
 
       // Convert to Recipe format for the day selection flow
       const recipe: Recipe = {
