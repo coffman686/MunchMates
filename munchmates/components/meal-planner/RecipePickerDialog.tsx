@@ -40,15 +40,9 @@ interface SavedRecipe {
   savedAt: string;
 }
 
-const CUSTOM_RECIPE_ID_START = 100000;
-
-const isCustomRecipeId = (recipeId: number) => recipeId >= CUSTOM_RECIPE_ID_START;
-
 const getSavedRecipeImage = (recipe: SavedRecipe) => {
   if (recipe.recipeImage) return recipe.recipeImage;
-  return !isCustomRecipeId(recipe.recipeId)
-    ? `https://img.spoonacular.com/recipes/${recipe.recipeId}-636x393.jpg`
-    : '';
+  return '';
 };
 
 type TabType = 'search' | 'saved' | 'my';
@@ -256,24 +250,28 @@ export default function RecipePickerDialog({
   const handleSavedRecipeClick = async (savedRecipe: SavedRecipe) => {
     setIsLoadingSaved(true);
     try {
-      const recipeDetailsUrl = isCustomRecipeId(savedRecipe.recipeId)
-        ? `/api/recipes/create?id=${savedRecipe.recipeId}`
-        : `/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`;
-      const response = await authedFetch(recipeDetailsUrl);
-      if (!response.ok) {
-        throw new Error('Failed to fetch recipe info');
+      const customResponse = await authedFetch(`/api/recipes/create?id=${savedRecipe.recipeId}`);
+
+      let recipeInfo: (Partial<Recipe> & { spoonacularScore?: number }) | null = null;
+
+      if (customResponse.ok) {
+        const recipePayload = await customResponse.json();
+        recipeInfo = recipePayload.recipe;
+      } else {
+        const spoonacularResponse = await authedFetch(`/api/spoonacular/recipes/information?id=${savedRecipe.recipeId}`);
+        if (!spoonacularResponse.ok) {
+          const errorData = await spoonacularResponse.json().catch(() => null);
+          throw new Error(errorData?.error?.message || 'Failed to fetch recipe info');
+        }
+        recipeInfo = await spoonacularResponse.json();
       }
-      const recipePayload = await response.json();
-      const recipeInfo = isCustomRecipeId(savedRecipe.recipeId)
-        ? recipePayload.recipe
-        : recipePayload;
 
       // Convert to Recipe format for the day selection flow
       const recipe: Recipe = {
-        id: recipeInfo.id,
-        title: recipeInfo.title,
+        id: recipeInfo.id || savedRecipe.recipeId,
+        title: recipeInfo.title || savedRecipe.recipeName,
         image: recipeInfo.image || getSavedRecipeImage(savedRecipe),
-        score: recipeInfo.spoonacularScore || 0,
+        score: recipeInfo.score || recipeInfo.spoonacularScore || 0,
         servings: recipeInfo.servings || 1,
         readyInMinutes: recipeInfo.readyInMinutes || 30,
         cuisines: recipeInfo.cuisines || [],
@@ -284,7 +282,7 @@ export default function RecipePickerDialog({
       setSelectedDays([currentDayDate]);
     } catch (error) {
       console.error('Failed to fetch saved recipe info:', error);
-      alert('Failed to load recipe details. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to load recipe details. Please try again.');
     } finally {
       setIsLoadingSaved(false);
     }

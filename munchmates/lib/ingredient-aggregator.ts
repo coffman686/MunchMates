@@ -121,7 +121,7 @@ async function fetchRecipeInfo(recipeId: number): Promise<RecipeInfo | null> {
     const isCustom = isCustomRecipeId(recipeId);
     const endpoint = isCustom
       ? `/api/recipes/create?id=${recipeId}`
-      : `/api/spoonacular/recipes/info?id=${recipeId}`;
+      : `/api/spoonacular/recipes/information?id=${recipeId}`;
     const response = await fetch(endpoint);
     if (!response.ok) {
       console.error(`Failed to fetch recipe ${recipeId}: ${response.status}`);
