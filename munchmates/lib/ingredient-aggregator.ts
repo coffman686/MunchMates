@@ -11,20 +11,55 @@ import { consolidateIngredients } from './grocery-consolidation';
 // ExtendedIngredient type (copied from spoonacular.ts to avoid importing server-side code)
 interface ExtendedIngredient {
   id: number;
-  aisle: string;
-  image: string;
+  aisle?: string;
+  image?: string;
   name: string;
   amount: number;
   unit: string;
-  unitShort: string;
-  unitLong: string;
-  originalString: string;
-  metaInformation: string[];
+  unitShort?: string;
+  unitLong?: string;
+  original?: string;
+  originalString?: string;
+  metaInformation?: string[];
 }
 
 interface RecipeInfo {
   title: string;
   extendedIngredients: ExtendedIngredient[];
+}
+
+const CUSTOM_RECIPE_ID_START = 100000;
+
+const isCustomRecipeId = (recipeId: number) => recipeId >= CUSTOM_RECIPE_ID_START;
+
+function normalizeRecipeInfo(payload: unknown, isCustom: boolean): RecipeInfo | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const recipe = isCustom
+    ? (payload as { recipe?: { title?: string; extendedIngredients?: ExtendedIngredient[] } }).recipe
+    : (payload as { title?: string; extendedIngredients?: ExtendedIngredient[] });
+
+  if (!recipe) return null;
+
+  const title = typeof recipe.title === 'string' ? recipe.title : 'Custom Recipe';
+  const rawIngredients = Array.isArray(recipe.extendedIngredients) ? recipe.extendedIngredients : [];
+
+  return {
+    title,
+    extendedIngredients: rawIngredients.map((ingredient, index) => ({
+      id: typeof ingredient.id === 'number' ? ingredient.id : index,
+      aisle: ingredient.aisle || '',
+      image: ingredient.image || '',
+      name: ingredient.name || ingredient.original || ingredient.originalString || '',
+      amount: Number(ingredient.amount) || 0,
+      unit: ingredient.unit || '',
+      unitShort: ingredient.unitShort || ingredient.unit || '',
+      unitLong: ingredient.unitLong || ingredient.unit || '',
+      original: ingredient.original || ingredient.originalString || ingredient.name || '',
+      originalString: ingredient.originalString || ingredient.original || ingredient.name || '',
+      metaInformation: ingredient.metaInformation || [],
+    })),
+  };
 }
 
 // --- Ingredient filtering constants ---
@@ -83,12 +118,17 @@ function isToTaste(originalString: string): boolean {
 // Fetch recipe information via API route (client-safe)
 async function fetchRecipeInfo(recipeId: number): Promise<RecipeInfo | null> {
   try {
-    const response = await fetch(`/api/spoonacular/recipes/info?id=${recipeId}`);
+    const isCustom = isCustomRecipeId(recipeId);
+    const endpoint = isCustom
+      ? `/api/recipes/create?id=${recipeId}`
+      : `/api/spoonacular/recipes/info?id=${recipeId}`;
+    const response = await fetch(endpoint);
     if (!response.ok) {
       console.error(`Failed to fetch recipe ${recipeId}: ${response.status}`);
       return null;
     }
-    return response.json();
+    const payload = await response.json();
+    return normalizeRecipeInfo(payload, isCustom);
   } catch (error) {
     console.error(`Error fetching recipe ${recipeId}:`, error);
     return null;
@@ -212,7 +252,7 @@ export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<Ag
       if (EXCLUDED_STAPLES.has(key)) continue;
 
       // Solution 4: Skip "to taste" / non-quantified ingredients
-      if (isToTaste(ingredient.originalString)) continue;
+      if (isToTaste(ingredient.originalString || ingredient.original || '')) continue;
 
       const adjustedAmount = (ingredient.amount || 0) * servingMultiplier;
       const unit = ingredient.unit || ingredient.unitShort || ingredient.unitLong || '';
