@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Search, Clock, Users, ChefHat, Loader2, ArrowLeft, Check, Heart } from 'lucide-react';
+import { Search, Clock, Users, ChefHat, Loader2, ArrowLeft, Check, Heart, BookOpen } from 'lucide-react';
 import { getDiets, getIntolerances } from '@/components/ingredients/Dietary';
 import { authedFetch } from '@/lib/authedFetch';
 
@@ -51,7 +51,7 @@ const getSavedRecipeImage = (recipe: SavedRecipe) => {
     : '';
 };
 
-type TabType = 'search' | 'saved';
+type TabType = 'search' | 'saved' | 'my';
 
 interface RecipePickerDialogProps {
   open: boolean;
@@ -97,6 +97,10 @@ export default function RecipePickerDialog({
   // Saved recipes state
   const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
+
+  // Custom recipes state
+  const [myRecipes, setMyRecipes] = useState<Recipe[]>([]);
+  const [isLoadingMyRecipes, setIsLoadingMyRecipes] = useState(false);
 
   // Day selection state
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
@@ -200,10 +204,44 @@ export default function RecipePickerDialog({
     }
   };
 
+  const loadMyRecipes = async () => {
+    setIsLoadingMyRecipes(true);
+    try {
+      const res = await authedFetch('/api/recipes/create');
+      if (res.status === 401) {
+        setTimeout(loadMyRecipes, 300);
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        setMyRecipes(
+          (data.recipes || []).map((recipe: Partial<Recipe>) => ({
+            id: recipe.id || 0,
+            title: recipe.title || 'Untitled Recipe',
+            image: recipe.image || '',
+            score: recipe.score || 0,
+            servings: recipe.servings || 1,
+            readyInMinutes: recipe.readyInMinutes || 30,
+            cuisines: recipe.cuisines || [],
+            dishTypes: recipe.dishTypes || [],
+          }))
+        );
+      } else {
+        setMyRecipes([]);
+      }
+    } catch (error) {
+      console.error('Error loading custom recipes:', error);
+      setMyRecipes([]);
+    } finally {
+      setIsLoadingMyRecipes(false);
+    }
+  };
+
   // Load saved recipes when dialog opens
   useEffect(() => {
     if (open) {
       loadSavedRecipes();
+      loadMyRecipes();
     }
   }, [open]);
 
@@ -402,6 +440,23 @@ export default function RecipePickerDialog({
               </Badge>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('my')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'my'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <BookOpen className="h-4 w-4" />
+            My Recipes
+            {myRecipes.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">
+                {myRecipes.length}
+              </Badge>
+            )}
+          </button>
         </div>
 
         {/* Search Tab Content */}
@@ -549,6 +604,77 @@ export default function RecipePickerDialog({
                 <p className="text-muted-foreground">No saved recipes yet</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   Save recipes from the Recipes page to quickly add them here
+                </p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setActiveTab('search')}
+                >
+                  Search for Recipes
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* My Recipes Tab Content */}
+        {activeTab === 'my' && (
+          <div className="flex-1 overflow-y-auto mt-4 -mx-6 px-6">
+            {isLoadingMyRecipes ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="h-12 w-12 text-muted-foreground animate-spin mb-4" />
+                <p className="text-muted-foreground">Loading your custom recipes...</p>
+              </div>
+            ) : myRecipes.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                {myRecipes.map((recipe) => (
+                  <Card
+                    key={recipe.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
+                    onClick={() => handleRecipeClick(recipe)}
+                  >
+                    <div className="h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
+                      {recipe.image ? (
+                        <img
+                          src={recipe.image}
+                          alt={recipe.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ChefHat className="h-12 w-12 text-muted-foreground" />
+                      )}
+                    </div>
+                    <CardContent className="p-3">
+                      <h3 className="font-medium text-sm leading-tight line-clamp-2 mb-2">
+                        {recipe.title}
+                      </h3>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {recipe.dishTypes?.slice(0, 2).map((type) => (
+                          <Badge key={type} variant="secondary" className="text-xs">
+                            {type}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{recipe.readyInMinutes} min</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          <span>{recipe.servings}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No custom recipes yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Create recipes in My Recipes and they&apos;ll appear here
                 </p>
                 <Button
                   variant="outline"
