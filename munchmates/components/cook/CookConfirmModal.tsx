@@ -104,7 +104,7 @@ export default function CookConfirmModal({
                 const recipeServings = recipe.servings || 1;
                 const scale = cookServings / recipeServings;
 
-                const scaledIngredients = recipe.extendedIngredients!.map((ing) => ({
+                const scaledIngredients = (recipe.extendedIngredients ?? []).map((ing) => ({
                     name: ing.name,
                     amount: ing.amount * scale,
                     unit: ing.unit,
@@ -151,13 +151,15 @@ export default function CookConfirmModal({
         setIsDeducting(true);
         setStatus(null);
 
-        const deductions = rows
-            .filter((row) => row.enabled && row.match.pantryItem)
-            .map((row) => ({
-                pantryItemId: row.match.pantryItem!.id,
+        const deductions = rows.flatMap((row) => {
+            const pantryItem = row.match.pantryItem;
+            if (!row.enabled || !pantryItem) return [];
+            return [{
+                pantryItemId: pantryItem.id,
                 amount: row.scaledAmount,
                 unit: row.scaledUnit,
-            }));
+            }];
+        });
 
         if (deductions.length === 0) {
             setStatus({ type: 'success', message: 'Marked as cooked (no pantry items to deduct)' });

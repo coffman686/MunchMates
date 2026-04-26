@@ -15,6 +15,7 @@ import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 import { WeeklyMealPlan, DayPlan, MealPlanEntry } from "@/lib/types/meal-plan";
+import { ensureUserExists } from "@/lib/user-service";
 
 // Reconstruct the frontend-compatible DayPlan[] shape from flat MealEntry rows
 function buildWeeklyPlan(
@@ -35,8 +36,12 @@ function buildWeeklyPlan(
   // Build a map of date -> mealType -> entry
   const mealMap = new Map<string, Map<string, MealPlanEntry>>();
   for (const meal of meals) {
-    if (!mealMap.has(meal.date)) mealMap.set(meal.date, new Map());
-    mealMap.get(meal.date)!.set(meal.mealType, {
+    let dayMap = mealMap.get(meal.date);
+    if (!dayMap) {
+      dayMap = new Map();
+      mealMap.set(meal.date, dayMap);
+    }
+    dayMap.set(meal.mealType, {
       id: meal.entryId,
       recipeId: meal.recipeId,
       title: meal.title,
@@ -111,12 +116,7 @@ export async function POST(req: NextRequest) {
     const plan: WeeklyMealPlan = body.plan;
     const userId = payload.sub;
 
-    // Ensure User record exists
-    await prisma.user.upsert({
-      where: { id: userId },
-      update: { name: payload.name ?? "", username: payload.preferred_username ?? "" },
-      create: { id: userId, name: payload.name ?? "", username: payload.preferred_username ?? "" },
-    });
+    await ensureUserExists(userId, payload);
 
     // Collect all meal entries from the plan
     const mealEntries: {

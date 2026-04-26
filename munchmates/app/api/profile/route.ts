@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { ensureUserExists } from "@/lib/user-service";
 
 const toNullableInt = (value: unknown): number | null => {
     if (value === "" || value === undefined || value === null) return null;
@@ -47,11 +48,7 @@ export async function POST(req: NextRequest) {
             dailyFatGoal: toNullableInt(body.dailyFatGoal),
         };
 
-        await prisma.user.upsert({
-            where: { id: p.sub },
-            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
-            create: { id: p.sub, name: p.name ?? "", username: p.preferred_username ?? "" },
-        });
+        await ensureUserExists(p.sub, p);
 
         const profile = await prisma.userProfile.upsert({
             where: { userId: p.sub },

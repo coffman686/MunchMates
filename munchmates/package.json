@@ -58,7 +58,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/swagger-ui-react": "^5.18.0",
-    "baseline-browser-mapping": "^2.8.32",
     "concurrently": "^9.2.1",
     "dotenv": "^17.2.3",
     "eslint": "^9",
@@ -69,5 +68,8 @@
     "typescript": "^5",
     "vitest": "^4.1.4",
     "wait-on": "^9.0.1"
+  },
+  "overrides": {
+    "eslint-plugin-react-hooks": "7.0.1"
   }
 }

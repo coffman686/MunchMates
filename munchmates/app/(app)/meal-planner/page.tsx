@@ -49,6 +49,8 @@ import {
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { aggregateIngredients } from '@/lib/ingredient-aggregator';
 import { ensureToken } from '@/lib/keycloak';
+import { authedFetch } from '@/lib/authedFetch';
+import { ensureDietaryPrefsLoaded, getDietaryPrefs } from '@/lib/dietary-prefs';
 import {
   createEmptyWeekPlan,
   type DayPlan,
@@ -118,11 +120,9 @@ const MealPlanner = () => {
 
   useEffect(() => {
     setCurrentDate(new Date());
-    const savedDiet = localStorage.getItem('diets');
-    if (savedDiet) {
-      const diets = JSON.parse(savedDiet);
-      if (diets.length > 0) setGenDiet(diets[0]);
-    }
+    ensureDietaryPrefsLoaded().then((prefs) => {
+      if (prefs.diets.length > 0) setGenDiet(prefs.diets[0]);
+    });
   }, []);
 
   const formatLocalDateStr = (d: Date): string => {
@@ -161,12 +161,8 @@ const MealPlanner = () => {
 
       const token = await ensureToken();
       if (token) {
-        const saveRes = await fetch('/api/meal-plan', {
+        const saveRes = await authedFetch('/api/meal-plan', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({ plan }),
         });
 
@@ -174,11 +170,7 @@ const MealPlanner = () => {
           throw new Error('Failed to save meal plan');
         }
 
-        const nutritionRes = await fetch(`/api/meal-plan/nutrition-summary?weekStart=${plan.weekStart}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const nutritionRes = await authedFetch(`/api/meal-plan/nutrition-summary?weekStart=${plan.weekStart}`);
 
         if (nutritionRes.ok) {
           const nutritionData = await nutritionRes.json();
@@ -212,9 +204,7 @@ const MealPlanner = () => {
         const localData = localStorage.getItem(localKey);
 
         if (token) {
-          const res = await fetch(`/api/meal-plan?weekStart=${weekStartStr}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const res = await authedFetch(`/api/meal-plan?weekStart=${weekStartStr}`);
 
           if (res.ok) {
             const data = await res.json();
@@ -257,9 +247,7 @@ const MealPlanner = () => {
           return;
         }
 
-        const res = await fetch(`/api/meal-plan/nutrition-summary?weekStart=${weekStartStr}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await authedFetch(`/api/meal-plan/nutrition-summary?weekStart=${weekStartStr}`);
 
         if (!res.ok) {
           setNutritionDays([]);
@@ -461,7 +449,7 @@ const MealPlanner = () => {
       if (genDiet && genDiet !== '__none') params.set('diet', genDiet);
       if (genExclude) params.set('exclude', genExclude);
 
-      const res = await fetch(`/api/spoonacular/recipes/generateMealPlan?${params}`);
+      const res = await authedFetch(`/api/spoonacular/recipes/generateMealPlan?${params}`);
       if (!res.ok) throw new Error('Failed to generate meal plan');
       const data = await res.json();
 

@@ -8,6 +8,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, Loader2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { authedFetch } from '@/lib/authedFetch';
 
 interface Suggestion {
   id: number;
@@ -40,7 +41,7 @@ export default function RecipeAutocomplete({
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/spoonacular/recipes/autocomplete?query=${encodeURIComponent(q)}&number=7`);
+      const res = await authedFetch(`/api/spoonacular/recipes/autocomplete?query=${encodeURIComponent(q)}&number=7`);
       if (res.ok) {
         const data = await res.json();
         setSuggestions(data.suggestions || []);

@@ -1,10 +1,10 @@
-// file: recipes/info/route.ts
-// GET endpoint to fetch additioinal recipe information
-// Inputs: spooncular recipe ID
-// Output:
-// - Recipe information if successful
-// - 404 if id not provided
-// - 500 otherwise
+// recipes/info/route.ts
+// GET endpoint to fetch full recipe information from Spoonacular.
+// Query params:
+//   id (required)         — Spoonacular recipe ID
+//   normalize (optional)  — when "true", normalizes extendedIngredients[].name
+//                           for pantry/canonName matching. Original is preserved
+//                           as `originalName`. Defaults to false.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     return errorResponse(401, "Unauthorized");
   }
   const recipeId = req.nextUrl.searchParams.get('id');
+  const shouldNormalize = req.nextUrl.searchParams.get('normalize') === 'true';
 
   if (!recipeId) {
     return errorResponse(400, 'Recipe ID is required');
@@ -29,9 +30,7 @@ export async function GET(req: NextRequest) {
   try {
     const recipeInfo = await getRecipeInformation(parseInt(recipeId, 10));
 
-    // Normalize ingredient names for matching with pantry canonName values.
-    // Preserve the original name for display purposes.
-    if (recipeInfo.extendedIngredients) {
+    if (shouldNormalize && recipeInfo.extendedIngredients) {
       recipeInfo.extendedIngredients = recipeInfo.extendedIngredients.map(
         (ingredient) => ({
           ...ingredient,
@@ -43,6 +42,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(recipeInfo);
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    if (errorMessage.includes('402')) {
+      return errorResponse(402, 'API daily limit reached. Please try again tomorrow or upgrade your Spoonacular plan.');
+    }
     return handleRouteError(error, 'Failed to fetch recipe info');
   }
 }

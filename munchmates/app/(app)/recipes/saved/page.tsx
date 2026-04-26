@@ -22,13 +22,7 @@ import { authedFetch } from '@/lib/authedFetch';
 import RecipeCard from '@/components/recipes/RecipeCard';
 import { RecipeGridSkeleton } from '@/components/recipes/RecipeCardSkeleton';
 import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/AddToCollectionDialog';
-
-type SavedRecipe = {
-    recipeId: number;
-    recipeName: string;
-    recipeImage?: string;
-    savedAt?: string;
-};
+import type { SavedRecipe } from '@/lib/types/recipe';
 
 const getSavedRecipeImage = (recipe: SavedRecipe) => {
     if (recipe.recipeImage) return recipe.recipeImage;

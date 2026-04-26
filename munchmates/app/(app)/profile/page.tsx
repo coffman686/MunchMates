@@ -13,10 +13,11 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/layout/app-sidebar";
 import {
     initKeycloak,
-    ensureToken,
     getAccessTokenClaims,
     logout,
 } from "@/lib/keycloak";
+import { authedFetch } from "@/lib/authedFetch";
+import { setDietaryPrefs } from "@/lib/dietary-prefs";
 import { LogOut, User, ShieldAlert, Trash2, Save, Leaf, AlertTriangle, Globe } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -90,19 +91,13 @@ const ProfilePage = () => {
     const [diets, setDiets] = useState<string[]>([]);
     const [intolerances, setIntolerances] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState("");
+    const [saveSuccess, setSaveSuccess] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [dailyCalorieGoal, setDailyCalorieGoal] = useState("");
     const [dailyProteinGoal, setDailyProteinGoal] = useState("");
     const [dailyCarbGoal, setDailyCarbGoal] = useState("");
     const [dailyFatGoal, setDailyFatGoal] = useState("");
-
-    // Load diets/intolerances from localStorage on mount
-    useEffect(() => {
-        const localDiets = localStorage.getItem("diets");
-        if (localDiets) setDiets(JSON.parse(localDiets));
-        const localIntolerances = localStorage.getItem("intolerances");
-        if (localIntolerances) setIntolerances(JSON.parse(localIntolerances));
-    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -127,11 +122,7 @@ const ProfilePage = () => {
         if (!authReady) return;
         const loadProfile = async () => {
             try {
-                const token = await ensureToken();
-                if (!token) return;
-                const res = await fetch("/api/profile", {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+                const res = await authedFetch("/api/profile");
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.favoriteCuisines) {
@@ -156,17 +147,11 @@ const ProfilePage = () => {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setSaving(true);
+        setSaveError("");
+        setSaveSuccess(false);
         try {
-            // Sync to localStorage for other components that read from there
-            localStorage.setItem("diets", JSON.stringify(diets));
-            localStorage.setItem("intolerances", JSON.stringify(intolerances));
-
-            const token = await ensureToken();
-            const headers: Record<string, string> = { "Content-Type": "application/json" };
-            if (token) headers.Authorization = `Bearer ${token}`;
-            const res = await fetch("/api/profile", {
+            const res = await authedFetch("/api/profile", {
                 method: "POST",
-                headers,
                 body: JSON.stringify({
                     favoriteCuisines: favoriteCuisines.join(", "),
                     diets,
@@ -177,10 +162,17 @@ const ProfilePage = () => {
                     dailyFatGoal,
                 }),
             });
-            if (!res.ok) { setSaving(false); return; }
+            if (!res.ok) {
+                setSaveError("Could not save changes. Please try again.");
+                setSaving(false);
+                return;
+            }
+            setDietaryPrefs({ diets, intolerances });
+            setSaveSuccess(true);
             setSaving(false);
         } catch (err) {
             console.error("Error saving profile", err);
+            setSaveError("Could not save changes. Please try again.");
             setSaving(false);
         }
     };
@@ -192,10 +184,7 @@ const ProfilePage = () => {
         if (!confirmed) return;
         try {
             setDeleting(true);
-            const token = await ensureToken();
-            const headers: Record<string, string> = {};
-            if (token) headers.Authorization = `Bearer ${token}`;
-            const res = await fetch("/api/account", { method: "DELETE", headers });
+            const res = await authedFetch("/api/account", { method: "DELETE" });
             if (!res.ok) { setDeleting(false); return; }
             await logout(window.location.origin);
         } catch (err) {
@@ -356,6 +345,12 @@ const ProfilePage = () => {
                                     </div>
                                 </div>
                                 {/* Save */}
+                                {saveError && (
+                                    <p className="text-[13px] font-medium text-red-500" role="alert">{saveError}</p>
+                                )}
+                                {saveSuccess && !saveError && (
+                                    <p className="text-[13px] font-medium text-green-600" role="status">Changes saved.</p>
+                                )}
                                 <Button type="submit" className="w-full h-11 rounded-xl text-[14px] font-semibold" disabled={saving}>
                                     <Save className="h-4 w-4 mr-2" />
                                     {saving ? "Saving..." : "Save Changes"}

@@ -44,6 +44,10 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { authedFetch } from '@/lib/authedFetch';
 import { ensureToken, getAccessTokenClaims, getParsedIdToken, keycloak } from '@/lib/keycloak';
 import type { NutritionDaySummary, NutritionMetricProgress } from '@/lib/types/meal-plan';
+import type { PantryItem } from '@/lib/types/pantry';
+import type { GroceryItem } from '@/lib/types/grocery';
+import type { PopularRecipe } from '@/lib/types/recipe';
+import { ensureDietaryPrefsLoaded, isDietaryPrefsHydrated, setDietaryPrefs } from '@/lib/dietary-prefs';
 
 // initialize types
 type IdClaims = { name?: string; preferred_username?: string; email?: string };
@@ -71,35 +75,6 @@ interface DayPlan {
 interface WeeklyMealPlan {
     weekStart: string;
     days: DayPlan[];
-}
-
-// Pantry items
-interface PantryItem {
-    id: number;
-    name: string;
-    quantity: string;
-    category: string;
-    expiryDate?: string | null;
-    addedAt: string;
-}
-
-// Grocery list items
-interface GroceryItem {
-    id: number;
-    name: string;
-    category: string;
-    completed: boolean;
-    quantity?: string;
-    fromMealPlan?: boolean;
-}
-
-// Popular recipes from Spoonacular
-interface PopularRecipe {
-    id: number;
-    title: string;
-    image?: string;
-    readyInMinutes?: number;
-    servings?: number;
 }
 
 interface NutritionProgressDial {
@@ -247,17 +222,90 @@ export default function Dashboard() {
     // nutrition widget
     const [nutritionProgress, setNutritionProgress] = useState<NutritionProgressDial[]>(makeNutritionDials(null));
 
-    // Open dietary preferences modal if uninitialized
     useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const prefs = await ensureDietaryPrefsLoaded();
+            if (cancelled) return;
+
+            // One-time migration: existing users have prefs in localStorage but the API
+            // doesn't know about them yet. Push them up so /api/profile becomes source of truth.
+            if (
+                isDietaryPrefsHydrated() &&
+                prefs.diets.length === 0 &&
+                prefs.intolerances.length === 0
+            ) {
+                const lsDiets = localStorage.getItem("diets");
+                const lsIntolerances = localStorage.getItem("intolerances");
+                const migratedDiets = lsDiets ? lsDiets.split(",").filter(Boolean) : [];
+                const migratedIntolerances = lsIntolerances ? lsIntolerances.split(",").filter(Boolean) : [];
+                if (migratedDiets.length > 0 || migratedIntolerances.length > 0) {
+                    const current = await authedFetch("/api/profile");
+                    if (current.ok) {
+                        const profile = await current.json();
+                        const res = await authedFetch("/api/profile", {
+                            method: "POST",
+                            body: JSON.stringify({
+                                favoriteCuisines: profile.favoriteCuisines ?? "",
+                                dailyCalorieGoal: profile.dailyCalorieGoal ?? null,
+                                dailyProteinGoal: profile.dailyProteinGoal ?? null,
+                                dailyCarbGoal: profile.dailyCarbGoal ?? null,
+                                dailyFatGoal: profile.dailyFatGoal ?? null,
+                                diets: migratedDiets,
+                                intolerances: migratedIntolerances,
+                            }),
+                        });
+                        if (res.ok) {
+                            setDietaryPrefs({ diets: migratedDiets, intolerances: migratedIntolerances });
+                            localStorage.removeItem("diets");
+                            localStorage.removeItem("intolerances");
+                            if (!cancelled) {
+                                setDiets(migratedDiets);
+                                setIntolerances(migratedIntolerances);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
+            setDiets(prefs.diets);
+            setIntolerances(prefs.intolerances);
+        })();
+
         const localDietsInit = localStorage.getItem("hasDietsInit");
         if (localDietsInit !== "true") {
             setDietModal(true);
         }
+
+        return () => { cancelled = true; };
     }, []);
 
-    // Close preferences modal and complete initialization
-    function closeDiet(e: React.SyntheticEvent) {
+    async function closeDiet(e: React.SyntheticEvent) {
         e.preventDefault();
+        const current = await authedFetch("/api/profile");
+        if (!current.ok) {
+            window.alert("Could not load your profile to save dietary preferences. Please try again.");
+            return;
+        }
+        const profile = await current.json();
+        const res = await authedFetch("/api/profile", {
+            method: "POST",
+            body: JSON.stringify({
+                favoriteCuisines: profile.favoriteCuisines ?? "",
+                dailyCalorieGoal: profile.dailyCalorieGoal ?? null,
+                dailyProteinGoal: profile.dailyProteinGoal ?? null,
+                dailyCarbGoal: profile.dailyCarbGoal ?? null,
+                dailyFatGoal: profile.dailyFatGoal ?? null,
+                diets,
+                intolerances,
+            }),
+        });
+        if (!res.ok) {
+            window.alert("Could not save your dietary preferences. Please try again.");
+            return;
+        }
+        setDietaryPrefs({ diets, intolerances });
         localStorage.setItem("hasDietsInit", "true");
         setDietModal(false);
     }

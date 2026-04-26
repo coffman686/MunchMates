@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { ensureUserExists } from "@/lib/user-service";
+import { sanitizeString } from "@/lib/sanitize";
 
 // Default categories seeded on first GET if user has none
 const DEFAULT_CATEGORIES = [
@@ -32,12 +34,7 @@ export async function GET(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
-        });
+        await ensureUserExists(p.sub);
 
         let categories = await prisma.groceryCategory.findMany({
             where: { userId: p.sub },
@@ -100,7 +97,7 @@ export async function POST(req: NextRequest) {
             return errorResponse(400, "Missing required field: name");
         }
 
-        const name = String(body.name).trim().slice(0, 100);
+        const name = sanitizeString(body.name, 100);
 
         // Check if category already exists
         const existing = await prisma.groceryCategory.findFirst({

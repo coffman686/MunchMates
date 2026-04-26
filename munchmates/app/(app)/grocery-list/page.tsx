@@ -38,6 +38,7 @@ import {
     SelectItem,
 } from "@/components/ui/select";
 import { AggregatedIngredient } from '@/lib/types/meal-plan';
+import type { GroceryItem, GroceryCategory } from '@/lib/types/grocery';
 
 const CATEGORY_THEMES: Record<string, { icon: string; bg: string; text: string; border: string; badge: string }> = {
     'Produce':            { icon: '🥬', bg: 'bg-emerald-50',  text: 'text-emerald-700', border: 'border-l-emerald-400', badge: 'bg-emerald-100 text-emerald-700' },
@@ -59,22 +60,6 @@ const DEFAULT_THEME = { icon: '📦', bg: 'bg-gray-50', text: 'text-gray-700', b
 
 function getCategoryTheme(category: string) {
     return CATEGORY_THEMES[category] || DEFAULT_THEME;
-}
-
-interface GroceryItem {
-    id: number;
-    name: string;
-    category: string;
-    completed: boolean;
-    quantity?: string | null;
-    fromMealPlan?: boolean;
-    addedAt: string;
-}
-
-interface GroceryCategory {
-    id: number;
-    name: string;
-    sortOrder: number;
 }
 
 type RetryAction = () => void | Promise<void>;

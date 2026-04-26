@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { ensureUserExists } from "@/lib/user-service";
 
 export async function POST(req: NextRequest) {
     try {
@@ -35,12 +36,7 @@ export async function POST(req: NextRequest) {
             return errorResponse(400, "Instructions are required");
         }
 
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: userId },
-            update: { name: p.name ?? "", username: p.preferred_username ?? "" },
-            create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
-        });
+        await ensureUserExists(userId, p);
 
         const data: Parameters<typeof prisma.customRecipe.create>[0]['data'] = {
             userId,

@@ -18,24 +18,8 @@ import {
   SelectValue,
 } from "../ui/select";
 import { authedFetch } from "@/lib/authedFetch";
-
-interface GroceryItem {
-  id: number;
-  name: string;
-  category: string;
-  completed: boolean;
-  quantity?: string;
-}
-
-interface PantryItem {
-  id: number;
-  name: string;
-  canonName: string;
-  quantity: string;
-  category: string;
-  expiryDate?: string | null;
-  addedAt: string;
-}
+import type { GroceryItem } from "@/lib/types/grocery";
+import type { PantryItem } from "@/lib/types/pantry";
 
 const data = [
   // Produce - Fruits

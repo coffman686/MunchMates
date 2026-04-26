@@ -36,17 +36,7 @@ import {
     SelectContent,
     SelectItem,
 } from "@/components/ui/select";
-
-interface PantryItem {
-    id: number;
-    name: string;
-    quantity: string;
-    amount: number | null;
-    unit: string;
-    category: string;
-    expiryDate?: string | null;
-    addedAt: string;
-}
+import type { PantryItem } from '@/lib/types/pantry';
 
 type RetryAction = () => void | Promise<void>;
 

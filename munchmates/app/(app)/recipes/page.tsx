@@ -19,30 +19,11 @@ import AddToCollectionDialog, { useAddToCollection } from '@/components/recipes/
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { getDiets, getIntolerances } from '@/components/ingredients/Dietary';
+import { ensureDietaryPrefsLoaded, getDiets, getIntolerances } from '@/lib/dietary-prefs';
 import RecipeCard from '@/components/recipes/RecipeCard';
 import { RecipeGridSkeleton } from '@/components/recipes/RecipeCardSkeleton';
 import RecipeAutocomplete from '@/components/recipes/RecipeAutocomplete';
-
-type SavedRecipe = {
-    recipeId: number;
-    recipeName: string;
-    recipeImage?: string;
-    savedAt: string;
-};
-
-type Recipe = {
-    id: number;
-    title: string;
-    image: string;
-    score: number;
-    servings: number;
-    readyInMinutes: number;
-    cuisines: string[];
-    dishTypes: string[];
-    usedIngredients?: string[];
-    missedIngredientCount?: number;
-}
+import type { SavedRecipe, RecipeSearchResult as Recipe } from '@/lib/types/recipe';
 
 // Module-level cache to persist state across tab switches
 let cachedRecipes: Recipe[] | null = null;
@@ -105,8 +86,10 @@ const Recipes = () => {
     }
 
     useEffect(() => {
-        setDiet(getDiets())
-        setIntolerances(getIntolerances())
+        ensureDietaryPrefsLoaded().then(() => {
+            setDiet(getDiets());
+            setIntolerances(getIntolerances());
+        });
     }, []);
 
     useEffect(() => {

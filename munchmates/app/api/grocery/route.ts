@@ -6,18 +6,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
+import { ensureUserExists } from "@/lib/user-service";
+import { sanitizeString, sanitizeOptionalString, parsePositiveInt } from "@/lib/sanitize";
 
 // GET /api/grocery — List all grocery items for user
 export async function GET(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
-
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
-        });
+        await ensureUserExists(p.sub);
 
         const items = await prisma.groceryItem.findMany({
             where: { userId: p.sub },
@@ -53,18 +49,12 @@ export async function POST(req: NextRequest) {
             return errorResponse(400, "Missing required fields: name, category");
         }
 
-        // Sanitize inputs
-        const name = String(body.name).trim().slice(0, 200);
-        const quantity = body.quantity ? String(body.quantity).trim().slice(0, 100) : null;
-        const category = String(body.category).trim().slice(0, 100);
+        const name = sanitizeString(body.name, 200);
+        const quantity = sanitizeOptionalString(body.quantity, 100);
+        const category = sanitizeString(body.category, 100);
         const fromMealPlan = Boolean(body.fromMealPlan);
 
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
-        });
+        await ensureUserExists(p.sub);
 
         // Create or update item (upsert on name to prevent duplicates)
         const item = await prisma.groceryItem.upsert({
@@ -132,13 +122,13 @@ export async function PUT(req: NextRequest) {
         } = {};
 
         if (body.name !== undefined) {
-            updateData.name = String(body.name).trim().slice(0, 200);
+            updateData.name = sanitizeString(body.name, 200);
         }
         if (body.quantity !== undefined) {
-            updateData.quantity = body.quantity ? String(body.quantity).trim().slice(0, 100) : null;
+            updateData.quantity = sanitizeOptionalString(body.quantity, 100);
         }
         if (body.category !== undefined) {
-            updateData.category = String(body.category).trim().slice(0, 100);
+            updateData.category = sanitizeString(body.category, 100);
         }
         if (body.completed !== undefined) {
             updateData.completed = Boolean(body.completed);
@@ -178,8 +168,8 @@ export async function DELETE(req: NextRequest) {
             return errorResponse(400, "Missing required param: id");
         }
 
-        const itemId = parseInt(id, 10);
-        if (isNaN(itemId)) {
+        const itemId = parsePositiveInt(id);
+        if (itemId === null) {
             return errorResponse(400, "Invalid id");
         }
 

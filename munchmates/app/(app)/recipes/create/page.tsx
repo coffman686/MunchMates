@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import Autosuggest from '@/components/ingredients/Autosuggest';
 import { authedFetch } from '@/lib/authedFetch';
-import { ensureToken, waitForInit } from '@/lib/keycloak';
 import { formatAmount } from '@/lib/unit-conversion';
 
 const dishTypes = ['main course', 'side dish', 'dessert', 'appetizer', 'salad', 'bread', 'breakfast', 'soup', 'beverage', 'sauce', 'marinade', 'fingerfood', 'snack', 'drink'];
@@ -141,15 +140,11 @@ export default function CreateRecipePage() {
         try {
             let imageUrl: string | undefined;
 
-            // Upload image if selected (use raw fetch — authedFetch forces Content-Type: application/json)
             if (imageFile) {
-                await waitForInit();
-                const token = await ensureToken();
                 const formData = new FormData();
                 formData.append('file', imageFile);
                 const uploadRes = await authedFetch('/api/upload', {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
                     body: formData,
                 });
                 if (uploadRes.ok) {

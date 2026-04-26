@@ -45,7 +45,16 @@ const MyRecipesPage = () => {
                 }
                 if (res.ok) {
                     const data = await res.json();
-                    const mapped = (data.recipes || []).map((r: any) => ({
+                    type CustomRecipeResponse = {
+                        id: number;
+                        title: string;
+                        image?: string | null;
+                        servings: number;
+                        readyInMinutes: number;
+                        dishTypes?: string[];
+                        cuisines?: string[];
+                    };
+                    const mapped = (data.recipes || []).map((r: CustomRecipeResponse) => ({
                         id: r.id,
                         title: r.title,
                         image: r.image || undefined,

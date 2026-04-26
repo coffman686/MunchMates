@@ -14,18 +14,13 @@ import {
     PantryServiceError,
     updatePantryItem,
 } from "@/lib/pantry-service";
+import { ensureUserExists } from "@/lib/user-service";
 
 // GET /api/pantry — List all pantry items for user
 export async function GET(req: NextRequest) {
     try {
         const p = await verifyBearer(req.headers.get("authorization") || undefined);
-
-        // Ensure User record exists
-        await prisma.user.upsert({
-            where: { id: p.sub },
-            update: {},
-            create: { id: p.sub },
-        });
+        await ensureUserExists(p.sub);
 
         const items = await prisma.pantryItem.findMany({
             where: { userId: p.sub },
