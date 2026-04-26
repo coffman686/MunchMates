@@ -24,6 +24,9 @@ model User {
   pantryItems           PantryItem[]
   groceryItems          GroceryItem[]
   groceryCategories     GroceryCategory[]
+  posts                 Post[]
+  comments              Comment[]
+  postLikes             PostLike[]
 }
 
 // User dietary preferences (from profile route)
@@ -54,8 +57,9 @@ model SavedRecipe {
   @@unique([userId, recipeId])
 }
 
-// User-created recipes (from custom recipes route)
-// IDs start at 100000 to avoid conflicts with Spoonacular recipe IDs
+// User-created recipes (from custom recipes route).
+// Custom IDs and Spoonacular IDs share the same numeric space, so callers
+// that need to distinguish must consult the CustomRecipe table.
 model CustomRecipe {
   id             Int      @id @default(autoincrement())
   userId         String
@@ -207,4 +211,53 @@ model GroceryCategory {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name]) // Prevent duplicate categories per user
+}
+
+// Community post: caption plus an optional image and/or recipe reference.
+// recipeType is "spoonacular" or "custom". recipeName and recipeImage are
+// cached on the row so the feed renders without joins and so posts survive
+// deletion of the underlying recipe.
+model Post {
+  id          String   @id @default(cuid())
+  userId      String
+  caption     String
+  image       String?
+  recipeId    Int?
+  recipeType  String?
+  recipeName  String?
+  recipeImage String?
+  rating      Int?
+  createdAt   DateTime @default(now())
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments Comment[]
+  likes    PostLike[]
+
+  @@index([createdAt])
+}
+
+// Comment on a community post, ordered oldest-first in the thread UI
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  text      String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+// "Munch": a single user's like on a post. Composite PK prevents duplicates.
+model PostLike {
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
 }

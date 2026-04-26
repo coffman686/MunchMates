@@ -1,163 +1,300 @@
 // Community Page
-// Renders the social feed section of MunchMates, showcasing example posts
-// and exploring the future direction of in-app community features.
-// Includes:
-// - Search bar with text + tag matching
-// - Filters for all posts vs. trending posts
-// - Interactive post cards (likes, comments, shares, bookmarks)
-// - Sidebar with community stats, trending posts, and popular tags
-// Behavior:
-// - Uses local in-memory mock posts to demonstrate UX flow
-// - Supports liking and bookmarking with optimistic UI updates
-// - Placeholder for future authenticated posting + live community backend
-// This page serves as a proof-of-concept for the future social experience.
+// Renders the global social feed of MunchMates and connects it to the posts API.
+// Features:
+// - Loads posts from `/api/posts` via `authedFetch`
+// - "Create Post" dialog for caption + optional image/recipe/rating
+// - "Munch" (like) button with optimistic toggle and count reconciliation
+// - Expandable comment thread per post with inline composer
+// - Owner-only post and comment deletion
+// - Clickable recipe reference linking to the shared recipe detail page
+//   at `/recipes/[id]` (works for both Spoonacular and custom recipes)
+// - Initial-based avatar badges (no fake profile images)
 
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import RequireAuth from '@/components/RequireAuth';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/layout/app-sidebar';
 import { Input } from '@/components/ui/input';
-import {
-    MessageCircle,
-    Heart,
-    Bookmark,
-    TrendingUp,
-    Search,
-    MoreHorizontal,
-    Hash,
-    Send,
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { authedFetch } from '@/lib/authedFetch';
+import CreatePostDialog, { NewPost } from '@/components/community/CreatePostDialog';
+import { MessageCircle, Search, Plus, Star, Utensils, Trash2 } from 'lucide-react';
 
-interface Post {
-    id: number;
-    author: string;
-    avatar: string;
-    image: string;
+type Post = NewPost;
+
+type Comment = {
+    id: string;
     text: string;
-    likes: number;
-    comments: number;
-    shares: number;
-    timestamp: string;
-    isLiked: boolean;
-    isBookmarked: boolean;
-    tags: string[];
+    createdAt: string;
+    author: { id: string; name: string; username: string };
+};
+
+function formatRelative(iso: string) {
+    const then = new Date(iso).getTime();
+    const diff = Date.now() - then;
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}d`;
+    return new Date(iso).toLocaleDateString();
+}
+
+function displayName(a: { name: string; username: string }) {
+    return a.name?.trim() || a.username?.trim() || 'Anonymous';
+}
+
+function initials(name: string) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+    return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
+
+// Muffin icon: our brand-specific "munch" vote icon.
+function MuffinIcon({ filled = false, className = '' }: { filled?: boolean; className?: string }) {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className={className}
+            width="18"
+            height="18"
+            aria-hidden="true"
+        >
+            {/* Muffin top (dome) */}
+            <path
+                d="M4.5 11c0-4.1 3.4-7.5 7.5-7.5s7.5 3.4 7.5 7.5"
+                fill={filled ? '#f59e0b' : 'none'}
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            {/* Sprinkles, only when unfilled */}
+            {!filled && (
+                <g stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                    <line x1="9" y1="7.5" x2="9.6" y2="6.9" />
+                    <line x1="12.2" y1="6.4" x2="12.8" y2="5.8" />
+                    <line x1="14.8" y1="8.2" x2="15.4" y2="7.6" />
+                </g>
+            )}
+            {/* Wrapper / liner */}
+            <path
+                d="M3.5 11h17l-1.6 9a2.2 2.2 0 0 1-2.2 1.8H7.3A2.2 2.2 0 0 1 5.1 20L3.5 11z"
+                fill={filled ? '#fde68a' : 'none'}
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            {/* Liner fluting */}
+            <path
+                d="M8.5 11.2l-.3 10M12 11.2v10M15.5 11.2l.3 10"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+            />
+        </svg>
+    );
 }
 
 const Community = () => {
-    const [posts, setPosts] = useState<Post[]>([
-        {
-            id: 1,
-            author: 'Jane Doe',
-            avatar: 'https://i.pravatar.cc/150?u=a042581f4e29026704d',
-            image: 'https://images.pexels.com/photos/70497/pexels-photo-70497.jpeg?cs=srgb&dl=burger-chips-dinner-70497.jpg&fm=jpg',
-            text: 'Just tried the Smash Burger recipe from the app, and it was amazing! The instructions were so clear and the result was restaurant-quality. Highly recommend!',
-            likes: 24,
-            comments: 8,
-            shares: 3,
-            timestamp: '2h',
-            isLiked: false,
-            isBookmarked: false,
-            tags: ['burgers', 'dinner', 'comfort-food']
-        },
-        {
-            id: 2,
-            author: 'John Smith',
-            avatar: 'https://i.pravatar.cc/150?u=a042581f4e29026704e',
-            image: 'https://images5.alphacoders.com/132/1322094.png',
-            text: 'Made this incredible ramen from scratch last night. The broth took hours but it was so worth it. Anyone else obsessed with homemade ramen?',
-            likes: 12,
-            comments: 15,
-            shares: 2,
-            timestamp: '5h',
-            isLiked: true,
-            isBookmarked: true,
-            tags: ['ramen', 'homemade', 'japanese']
-        },
-        {
-            id: 3,
-            author: 'Maria Garcia',
-            avatar: 'https://i.pravatar.cc/150?u=a042581f4e29026704f',
-            image: 'https://thumbs.dreamstime.com/b/delicious-chocolate-chip-cookies-captured-high-detail-tempting-crunchy-pecans-beautifully-quality-food-photography-golden-347725977.jpg',
-            text: 'Fresh batch of chocolate chip cookies straight from the oven. Used the recipe from my saved collection and they turned out perfect every time.',
-            likes: 42,
-            comments: 23,
-            shares: 7,
-            timestamp: '1d',
-            isLiked: false,
-            isBookmarked: true,
-            tags: ['baking', 'cookies', 'dessert']
-        },
-        {
-            id: 4,
-            author: 'Alex Chen',
-            avatar: 'https://i.pravatar.cc/150?u=a042581f4e29026704a',
-            image: 'https://hips.hearstapps.com/hmg-prod/images/ketochickenthighs1-1645730836.jpg',
-            text: 'These crispy chicken thighs are my go-to weeknight dinner. So simple but the flavor is unreal. Meal prepped a double batch for the week!',
-            likes: 67,
-            comments: 11,
-            shares: 5,
-            timestamp: '2d',
-            isLiked: false,
-            isBookmarked: false,
-            tags: ['chicken', 'meal-prep', 'keto']
-        }
-    ]);
-
+    const [posts, setPosts] = useState<Post[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeFilter, setActiveFilter] = useState<'all' | 'trending'>('all');
+    const [createOpen, setCreateOpen] = useState(false);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    const popularTags = [
-        'recipes', 'tips', 'vegan', 'meal-prep', 'baking',
-        'quick-meals', 'healthy', 'comfort-food', 'international'
-    ];
+    // Per-post comment state
+    const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+    const [commentsByPost, setCommentsByPost] = useState<Record<string, Comment[]>>({});
+    const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
+    const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
+    const [commentSubmitting, setCommentSubmitting] = useState<Record<string, boolean>>({});
 
-    // Mock "story" users for the stories bar
-    const storyUsers = [
-        { name: 'Sarah K.', avatar: 'https://i.pravatar.cc/150?u=story1', hasNew: true },
-        { name: 'Mike R.', avatar: 'https://i.pravatar.cc/150?u=story2', hasNew: true },
-        { name: 'Emily W.', avatar: 'https://i.pravatar.cc/150?u=story3', hasNew: true },
-        { name: 'David L.', avatar: 'https://i.pravatar.cc/150?u=story4', hasNew: false },
-        { name: 'Lisa M.', avatar: 'https://i.pravatar.cc/150?u=story5', hasNew: false },
-        { name: 'Chris P.', avatar: 'https://i.pravatar.cc/150?u=story6', hasNew: true },
-        { name: 'Amy T.', avatar: 'https://i.pravatar.cc/150?u=story7', hasNew: false },
-    ];
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { keycloak, waitForInit } = await import('@/lib/keycloak');
+            await waitForInit();
+            if (!cancelled) {
+                const sub = keycloak.tokenParsed?.sub;
+                setCurrentUserId(typeof sub === 'string' ? sub : null);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
-    const trendingPosts = [...posts].sort((a, b) => b.likes - a.likes).slice(0, 3);
-
-    const baseFilteredPosts = posts.filter(post =>
-        post.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        post.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        post.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-
-    const filteredPosts =
-        activeFilter === 'trending'
-            ? baseFilteredPosts.slice().sort((a, b) => b.likes - a.likes)
-            : baseFilteredPosts;
-
-    const handleLike = (postId: number) => {
-        setPosts(prev => prev.map(post =>
-            post.id === postId
-                ? {
-                    ...post,
-                    likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-                    isLiked: !post.isLiked
+    const loadPosts = useCallback(async (attempt = 0) => {
+        try {
+            const res = await authedFetch('/api/posts');
+            if (res.status === 401) {
+                if (attempt < 3) {
+                    setTimeout(() => loadPosts(attempt + 1), 300);
+                    return;
                 }
-                : post
-        ));
+                setLoadError('Authentication is taking longer than expected. Try refreshing.');
+                setIsLoading(false);
+                return;
+            }
+            if (!res.ok) {
+                setLoadError('Failed to load posts.');
+                return;
+            }
+            const data = await res.json();
+            setPosts(data.posts || []);
+            setLoadError(null);
+        } catch (err) {
+            console.error('Error loading posts:', err);
+            setLoadError('Failed to load posts.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadPosts();
+    }, [loadPosts]);
+
+    const handlePostCreated = (post: Post) => {
+        setPosts(prev => [post, ...prev]);
     };
 
-    const handleBookmark = (postId: number) => {
-        setPosts(prev => prev.map(post =>
-            post.id === postId
-                ? { ...post, isBookmarked: !post.isBookmarked }
-                : post
-        ));
+    const handleYum = async (post: Post) => {
+        setPosts(prev =>
+            prev.map(p =>
+                p.id === post.id
+                    ? {
+                          ...p,
+                          likedByMe: !p.likedByMe,
+                          likeCount: p.likedByMe ? p.likeCount - 1 : p.likeCount + 1,
+                      }
+                    : p,
+            ),
+        );
+
+        try {
+            const res = await authedFetch(`/api/posts/${post.id}/like`, { method: 'POST' });
+            if (!res.ok) throw new Error('Like failed');
+            const data = await res.json();
+            setPosts(prev =>
+                prev.map(p =>
+                    p.id === post.id ? { ...p, likedByMe: data.liked, likeCount: data.likeCount } : p,
+                ),
+            );
+        } catch (err) {
+            console.error('Error toggling munch:', err);
+            setPosts(prev =>
+                prev.map(p =>
+                    p.id === post.id
+                        ? { ...p, likedByMe: post.likedByMe, likeCount: post.likeCount }
+                        : p,
+                ),
+            );
+        }
     };
 
-    const card = 'rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)]';
+    const handleDeletePost = async (postId: string) => {
+        if (!confirm('Delete this post?')) return;
+        try {
+            const res = await authedFetch(`/api/posts/${postId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Delete failed');
+            setPosts(prev => prev.filter(p => p.id !== postId));
+        } catch (err) {
+            console.error('Error deleting post:', err);
+            alert('Failed to delete post.');
+        }
+    };
+
+    const toggleComments = async (postId: string) => {
+        const willOpen = !openComments[postId];
+        setOpenComments(prev => ({ ...prev, [postId]: willOpen }));
+        if (willOpen && !commentsByPost[postId]) {
+            setCommentLoading(prev => ({ ...prev, [postId]: true }));
+            try {
+                const res = await authedFetch(`/api/posts/${postId}/comments`);
+                if (!res.ok) throw new Error('Comments load failed');
+                const data = await res.json();
+                setCommentsByPost(prev => ({ ...prev, [postId]: data.comments || [] }));
+            } catch (err) {
+                console.error('Error loading comments:', err);
+                alert('Failed to load comments.');
+                setOpenComments(prev => ({ ...prev, [postId]: false }));
+            } finally {
+                setCommentLoading(prev => ({ ...prev, [postId]: false }));
+            }
+        }
+    };
+
+    const submitComment = async (postId: string) => {
+        const text = (commentDraft[postId] || '').trim();
+        if (!text) return;
+        setCommentSubmitting(prev => ({ ...prev, [postId]: true }));
+        try {
+            const res = await authedFetch(`/api/posts/${postId}/comments`, {
+                method: 'POST',
+                body: JSON.stringify({ text }),
+            });
+            if (!res.ok) throw new Error('Comment failed');
+            const data = await res.json();
+            setCommentsByPost(prev => ({
+                ...prev,
+                [postId]: [...(prev[postId] || []), data.comment],
+            }));
+            setCommentDraft(prev => ({ ...prev, [postId]: '' }));
+            setPosts(prev =>
+                prev.map(p => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)),
+            );
+        } catch (err) {
+            console.error('Error posting comment:', err);
+            alert('Failed to post comment.');
+        } finally {
+            setCommentSubmitting(prev => ({ ...prev, [postId]: false }));
+        }
+    };
+
+    const deleteComment = async (postId: string, commentId: string) => {
+        try {
+            const res = await authedFetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Delete failed');
+            setCommentsByPost(prev => ({
+                ...prev,
+                [postId]: (prev[postId] || []).filter(c => c.id !== commentId),
+            }));
+            setPosts(prev =>
+                prev.map(p =>
+                    p.id === postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p,
+                ),
+            );
+        } catch (err) {
+            console.error('Error deleting comment:', err);
+            alert('Failed to delete comment.');
+        }
+    };
+
+    const filteredPosts = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
+        if (!q) return posts;
+        return posts.filter(
+            p =>
+                p.caption.toLowerCase().includes(q) ||
+                displayName(p.author).toLowerCase().includes(q) ||
+                (p.recipeName || '').toLowerCase().includes(q),
+        );
+    }, [posts, searchTerm]);
+
+    const card =
+        'rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)]';
 
     return (
         <RequireAuth>
@@ -166,276 +303,290 @@ const Community = () => {
                     <AppSidebar />
                     <div className="flex-1 flex flex-col">
                         <main className="flex-1 p-4 sm:p-6 bg-muted/20">
-                            <div className="w-full space-y-5">
-
-                                {/* Search + Filters */}
+                            <div className="w-full max-w-3xl mx-auto space-y-5">
+                                {/* Search + Create */}
                                 <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                                     <div className="flex-1 relative">
                                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                         <Input
-                                            placeholder="Search posts, users, or tags..."
+                                            placeholder="Search posts, users, or recipes..."
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             className="h-10 pl-10 rounded-xl text-sm bg-muted/50 border-border/50"
                                         />
                                     </div>
-                                    <div className="flex gap-1.5 bg-muted/50 rounded-xl p-1">
-                                        <button
-                                            onClick={() => setActiveFilter('all')}
-                                            className={`rounded-lg px-4 py-1.5 text-[13px] font-semibold transition-all ${
-                                                activeFilter === 'all'
-                                                    ? 'bg-card shadow-sm text-foreground'
-                                                    : 'text-muted-foreground hover:text-foreground'
-                                            }`}
-                                        >
-                                            All Posts
-                                        </button>
-                                        <button
-                                            onClick={() => setActiveFilter('trending')}
-                                            className={`rounded-lg px-4 py-1.5 text-[13px] font-semibold transition-all flex items-center gap-1.5 ${
-                                                activeFilter === 'trending'
-                                                    ? 'bg-card shadow-sm text-foreground'
-                                                    : 'text-muted-foreground hover:text-foreground'
-                                            }`}
-                                        >
-                                            <TrendingUp className="h-3.5 w-3.5" />
-                                            Trending
-                                        </button>
-                                    </div>
+                                    <Button
+                                        onClick={() => setCreateOpen(true)}
+                                        className="rounded-xl gap-1.5 h-10"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                        Create Post
+                                    </Button>
                                 </div>
 
-                                {/* Main content grid */}
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-                                    {/* Feed column */}
-                                    <div className="lg:col-span-2 space-y-5">
-
-                                        {/* Stories bar */}
-                                        <div className={`${card} px-4 py-3`}>
-                                            <div className="flex gap-4 overflow-x-auto pb-1">
-                                                {storyUsers.map((user) => (
-                                                    <button key={user.name} className="flex flex-col items-center gap-1.5 shrink-0 group">
-                                                        <div className={`p-[2.5px] rounded-full ${
-                                                            user.hasNew
-                                                                ? 'bg-gradient-to-tr from-amber-500 via-red-500 to-purple-600'
-                                                                : 'bg-border/60'
-                                                        }`}>
-                                                            <div className="h-14 w-14 rounded-full overflow-hidden bg-card p-[2px]">
-                                                                <img
-                                                                    src={user.avatar}
-                                                                    alt={user.name}
-                                                                    className="h-full w-full rounded-full object-cover"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate w-16 text-center">
-                                                            {user.name}
-                                                        </span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* Posts */}
-                                        {filteredPosts.map(post => (
-                                            <div key={post.id} className={`${card} overflow-hidden`}>
-                                                {/* Post header */}
-                                                <div className="flex items-center justify-between px-4 py-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="p-[2px] rounded-full bg-gradient-to-tr from-amber-500 via-red-500 to-purple-600">
-                                                            <div className="h-9 w-9 rounded-full overflow-hidden bg-card p-[1.5px]">
-                                                                <img
-                                                                    src={post.avatar}
-                                                                    alt={post.author}
-                                                                    className="h-full w-full rounded-full object-cover"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-[13px] font-bold leading-tight">
-                                                                {post.author}
-                                                            </p>
-                                                            <p className="text-[11px] text-muted-foreground">
-                                                                {post.timestamp}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
-                                                        <MoreHorizontal className="h-5 w-5 text-muted-foreground" />
-                                                    </button>
-                                                </div>
-
-                                                {/* Post image */}
-                                                <div className="relative aspect-[16/9] bg-muted">
-                                                    <img
-                                                        src={post.image}
-                                                        alt="Post"
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                </div>
-
-                                                {/* Action bar */}
-                                                <div className="flex items-center justify-between px-4 pt-3 pb-1">
-                                                    <div className="flex items-center gap-4">
-                                                        <button
-                                                            onClick={() => handleLike(post.id)}
-                                                            className="transition-transform active:scale-[1.2]"
-                                                        >
-                                                            <Heart className={`h-6 w-6 transition-colors ${
-                                                                post.isLiked
-                                                                    ? 'fill-red-500 text-red-500'
-                                                                    : 'text-foreground hover:text-foreground/70'
-                                                            }`} />
-                                                        </button>
-                                                        <button className="transition-transform active:scale-[1.1]">
-                                                            <MessageCircle className="h-6 w-6 text-foreground hover:text-foreground/70 transition-colors" />
-                                                        </button>
-                                                        <button className="transition-transform active:scale-[1.1]">
-                                                            <Send className="h-5 w-5 text-foreground hover:text-foreground/70 transition-colors -rotate-12" />
-                                                        </button>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleBookmark(post.id)}
-                                                        className="transition-transform active:scale-[1.2]"
-                                                    >
-                                                        <Bookmark className={`h-6 w-6 transition-colors ${
-                                                            post.isBookmarked
-                                                                ? 'fill-foreground text-foreground'
-                                                                : 'text-foreground hover:text-foreground/70'
-                                                        }`} />
-                                                    </button>
-                                                </div>
-
-                                                {/* Likes count */}
-                                                <div className="px-4 pt-1">
-                                                    <p className="text-[13px] font-bold">{post.likes.toLocaleString()} likes</p>
-                                                </div>
-
-                                                {/* Caption */}
-                                                <div className="px-4 pt-1 pb-2">
-                                                    <p className="text-[13px] leading-relaxed">
-                                                        <span className="font-bold mr-1.5">{post.author}</span>
-                                                        {post.text}
-                                                    </p>
-                                                    <div className="flex flex-wrap gap-1 mt-1.5">
-                                                        {post.tags.map(tag => (
-                                                            <span
-                                                                key={tag}
-                                                                className="text-[13px] font-medium text-primary/80 cursor-pointer hover:text-primary transition-colors"
-                                                            >
-                                                                #{tag}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Comments preview */}
-                                                {post.comments > 0 && (
-                                                    <button className="px-4 pb-1">
-                                                        <p className="text-[13px] text-muted-foreground">
-                                                            View all {post.comments} comments
-                                                        </p>
-                                                    </button>
-                                                )}
-
-                                                {/* Comment input */}
-                                                <div className="flex items-center gap-3 px-4 py-2.5 border-t border-border/30">
-                                                    <div className="h-7 w-7 rounded-full overflow-hidden bg-muted shrink-0">
-                                                        <img
-                                                            src="https://i.pravatar.cc/150?u=currentuser"
-                                                            alt="You"
-                                                            className="h-full w-full object-cover"
-                                                        />
-                                                    </div>
-                                                    <p className="text-[13px] text-muted-foreground flex-1">Add a comment...</p>
-                                                </div>
-                                            </div>
-                                        ))}
-
-                                        {/* Empty state */}
-                                        {filteredPosts.length === 0 && (
-                                            <div className={`${card} py-16 flex flex-col items-center text-center`}>
-                                                <div className="flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ backgroundColor: 'rgba(94,92,230,0.1)' }}>
-                                                    <Search className="h-6 w-6" style={{ color: '#5E5CE6' }} />
-                                                </div>
-                                                <h3 className="text-[16px] font-semibold mb-1">No posts found</h3>
-                                                <p className="text-[13px] text-muted-foreground max-w-[280px] leading-relaxed">
-                                                    {searchTerm
-                                                        ? 'Try adjusting your search terms.'
-                                                        : 'This page showcases example community posts. Posting will be added in a future release.'
-                                                    }
-                                                </p>
-                                            </div>
-                                        )}
+                                {/* Feed */}
+                                {isLoading ? (
+                                    <div className={`${card} py-16 text-center text-sm text-muted-foreground`}>
+                                        Loading posts...
                                     </div>
+                                ) : loadError ? (
+                                    <div className={`${card} py-16 text-center text-sm text-red-500`}>
+                                        {loadError}
+                                    </div>
+                                ) : filteredPosts.length === 0 ? (
+                                    <div className={`${card} py-16 flex flex-col items-center text-center`}>
+                                        <div
+                                            className="flex h-14 w-14 items-center justify-center rounded-full mb-4"
+                                            style={{ backgroundColor: 'rgba(245,158,11,0.12)' }}
+                                        >
+                                            <MuffinIcon className="text-amber-600" />
+                                        </div>
+                                        <h3 className="text-[16px] font-semibold mb-1">
+                                            {searchTerm ? 'No posts found' : 'No posts yet'}
+                                        </h3>
+                                        <p className="text-[13px] text-muted-foreground max-w-[320px] leading-relaxed">
+                                            {searchTerm
+                                                ? 'Try adjusting your search.'
+                                                : 'Be the first to share a recipe or a meal with the community.'}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-5">
+                                        {filteredPosts.map(post => {
+                                            const name = displayName(post.author);
+                                            const isAuthor = currentUserId === post.author.id;
+                                            const isCommentsOpen = !!openComments[post.id];
 
-                                    {/* Sidebar */}
-                                    <div className="space-y-4">
-                                        {/* Trending Posts */}
-                                        <div className={card}>
-                                            <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(255,69,58,0.1)' }}>
-                                                    <TrendingUp className="h-4 w-4" style={{ color: '#FF453A' }} />
-                                                </div>
-                                                <h3 className="text-[15px] font-semibold">Trending</h3>
-                                            </div>
-                                            <div className="px-3 pb-3">
-                                                <div className="divide-y divide-border/30">
-                                                    {trendingPosts.map((post) => (
-                                                        <div key={post.id} className="flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                                            return (
+                                                <article
+                                                    key={post.id}
+                                                    className={`${card} overflow-hidden flex flex-col`}
+                                                >
+                                                    {/* Header: name + time, no avatar image */}
+                                                    <div className="flex items-start justify-between px-5 pt-4 pb-3">
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                                                <span className="text-[13px] font-bold text-primary">
+                                                                    {initials(name)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="text-[14px] font-semibold leading-tight truncate">
+                                                                    {name}
+                                                                </p>
+                                                                <p className="text-[11px] text-muted-foreground">
+                                                                    {formatRelative(post.createdAt)} ago
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        {isAuthor && (
+                                                            <button
+                                                                onClick={() => handleDeletePost(post.id)}
+                                                                className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground hover:text-red-500 transition-colors"
+                                                                title="Delete post"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Image */}
+                                                    {post.image && (
+                                                        <div className="relative aspect-[16/9] bg-muted">
+                                                            <img
+                                                                src={post.image}
+                                                                alt="Post"
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Recipe card */}
+                                                    {post.recipeId && post.recipeName && (
+                                                        <Link
+                                                            href={`/recipes/${post.recipeId}`}
+                                                            className="flex items-center gap-3 mx-4 mt-3 p-3 rounded-xl border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors"
+                                                        >
                                                             <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted shrink-0">
-                                                                <img
-                                                                    src={post.image}
-                                                                    alt=""
-                                                                    className="h-full w-full object-cover"
-                                                                />
+                                                                {post.recipeImage ? (
+                                                                    <img
+                                                                        src={post.recipeImage}
+                                                                        alt=""
+                                                                        className="h-full w-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="h-full w-full flex items-center justify-center">
+                                                                        <Utensils className="h-5 w-5 text-muted-foreground" />
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="text-[13px] font-semibold leading-snug line-clamp-2">
-                                                                    {post.text.slice(0, 60)}...
+                                                                <p className="text-[13px] font-semibold truncate">
+                                                                    {post.recipeName}
                                                                 </p>
-                                                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                                                                    <span>{post.author}</span>
-                                                                    <span className="flex items-center gap-0.5">
-                                                                        <Heart className="h-3 w-3 fill-red-400 text-red-400" />
-                                                                        {post.likes}
-                                                                    </span>
-                                                                </div>
+                                                                <p className="text-[11px] text-muted-foreground capitalize">
+                                                                    {post.recipeType} recipe
+                                                                </p>
                                                             </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
+                                                            {post.rating && (
+                                                                <div className="flex items-center gap-0.5 shrink-0">
+                                                                    {[1, 2, 3, 4, 5].map(n => (
+                                                                        <Star
+                                                                            key={n}
+                                                                            className={`h-3.5 w-3.5 ${
+                                                                                n <= (post.rating || 0)
+                                                                                    ? 'fill-amber-400 text-amber-400'
+                                                                                    : 'text-muted-foreground/30'
+                                                                            }`}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </Link>
+                                                    )}
 
-                                        {/* Popular Tags */}
-                                        <div className={card}>
-                                            <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(10,132,255,0.1)' }}>
-                                                    <Hash className="h-4 w-4" style={{ color: '#0A84FF' }} />
-                                                </div>
-                                                <h3 className="text-[15px] font-semibold">Popular Tags</h3>
-                                            </div>
-                                            <div className="px-5 pb-4">
-                                                <div className="flex flex-wrap gap-2">
-                                                    {popularTags.map(tag => (
-                                                        <span
-                                                            key={tag}
-                                                            className="text-[12px] font-medium text-primary bg-primary/8 hover:bg-primary/15 rounded-full px-3 py-1.5 cursor-pointer transition-colors"
+                                                    {/* Caption */}
+                                                    {post.caption && (
+                                                        <p className="px-5 pt-3 text-[14px] leading-relaxed whitespace-pre-wrap">
+                                                            {post.caption}
+                                                        </p>
+                                                    )}
+
+                                                    {/* Actions: pill buttons, not an icon rail */}
+                                                    <div className="flex items-center gap-2 px-5 pt-3 pb-4 mt-auto">
+                                                        <button
+                                                            onClick={() => handleYum(post)}
+                                                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold transition-colors ${
+                                                                post.likedByMe
+                                                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                                                                    : 'bg-muted/70 text-foreground hover:bg-muted'
+                                                            }`}
                                                         >
-                                                            #{tag}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
+                                                            <MuffinIcon
+                                                                filled={post.likedByMe}
+                                                                className={post.likedByMe ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}
+                                                            />
+                                                            {post.likeCount}{' '}
+                                                            {post.likeCount === 1 ? 'Munch' : 'Munches'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleComments(post.id)}
+                                                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold transition-colors ${
+                                                                isCommentsOpen
+                                                                    ? 'bg-primary/10 text-primary'
+                                                                    : 'bg-muted/70 text-foreground hover:bg-muted'
+                                                            }`}
+                                                        >
+                                                            <MessageCircle className="h-4 w-4" />
+                                                            {post.commentCount}{' '}
+                                                            {post.commentCount === 1 ? 'Comment' : 'Comments'}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Expanded comments */}
+                                                    {isCommentsOpen && (
+                                                        <div className="px-5 pb-5 pt-3 border-t border-border/30 bg-muted/10 space-y-3">
+                                                            {commentLoading[post.id] ? (
+                                                                <p className="text-[12px] text-muted-foreground">
+                                                                    Loading comments...
+                                                                </p>
+                                                            ) : (commentsByPost[post.id] || []).length === 0 ? (
+                                                                <p className="text-[12px] text-muted-foreground">
+                                                                    No comments yet. Be the first to say something.
+                                                                </p>
+                                                            ) : (
+                                                                <div className="space-y-2.5">
+                                                                    {(commentsByPost[post.id] || []).map(c => {
+                                                                        const cName = displayName(c.author);
+                                                                        const isMine = currentUserId === c.author.id;
+                                                                        return (
+                                                                            <div
+                                                                                key={c.id}
+                                                                                className="flex items-start gap-2.5 group"
+                                                                            >
+                                                                                <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                                                                                    <span className="text-[10px] font-bold text-primary">
+                                                                                        {initials(cName)}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0 rounded-xl bg-muted/60 px-3 py-2">
+                                                                                    <div className="flex items-baseline gap-2">
+                                                                                        <p className="text-[12.5px] font-semibold truncate">
+                                                                                            {cName}
+                                                                                        </p>
+                                                                                        <p className="text-[10.5px] text-muted-foreground">
+                                                                                            {formatRelative(c.createdAt)}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    <p className="text-[13px] leading-snug whitespace-pre-wrap">
+                                                                                        {c.text}
+                                                                                    </p>
+                                                                                </div>
+                                                                                {isMine && (
+                                                                                    <button
+                                                                                        onClick={() =>
+                                                                                            deleteComment(post.id, c.id)
+                                                                                        }
+                                                                                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity mt-1"
+                                                                                    >
+                                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Comment composer */}
+                                                            <form
+                                                                onSubmit={(e) => {
+                                                                    e.preventDefault();
+                                                                    submitComment(post.id);
+                                                                }}
+                                                                className="flex items-center gap-2 pt-1"
+                                                            >
+                                                                <input
+                                                                    value={commentDraft[post.id] || ''}
+                                                                    onChange={(e) =>
+                                                                        setCommentDraft(prev => ({
+                                                                            ...prev,
+                                                                            [post.id]: e.target.value,
+                                                                        }))
+                                                                    }
+                                                                    placeholder="Share your thoughts..."
+                                                                    maxLength={1000}
+                                                                    className="flex-1 h-9 px-3.5 rounded-full bg-card border border-border/50 text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                                                />
+                                                                <Button
+                                                                    type="submit"
+                                                                    disabled={
+                                                                        !(commentDraft[post.id] || '').trim() ||
+                                                                        !!commentSubmitting[post.id]
+                                                                    }
+                                                                    className="rounded-full h-9 px-4 text-[12.5px]"
+                                                                >
+                                                                    {commentSubmitting[post.id] ? 'Posting...' : 'Send'}
+                                                                </Button>
+                                                            </form>
+                                                        </div>
+                                                    )}
+                                                </article>
+                                            );
+                                        })}
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </main>
                     </div>
                 </div>
             </SidebarProvider>
+
+            <CreatePostDialog
+                isOpen={createOpen}
+                onOpenChange={setCreateOpen}
+                onPostCreated={handlePostCreated}
+            />
         </RequireAuth>
     );
 };
