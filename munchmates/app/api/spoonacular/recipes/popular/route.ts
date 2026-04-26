@@ -3,10 +3,18 @@
 // Used by the dashboard carousel for trending recipe suggestions
 
 import { NextRequest, NextResponse } from 'next/server';
-import { handleRouteError } from '@/lib/apiErrors';
+import { errorResponse, handleRouteError } from '@/lib/apiErrors';
 import { searchRecipes } from '@/lib/spoonacular';
+import { verifyBearer } from '@/lib/verifyToken';
 
 export async function GET(req: NextRequest) {
+  // Verify bearer token for authentication
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  try {
+    await verifyBearer(authHeader ?? undefined);
+  } catch (err) {
+    return errorResponse(401, "Unauthorized");
+  }
   const offsetParam = req.nextUrl.searchParams.get('offset');
   const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 

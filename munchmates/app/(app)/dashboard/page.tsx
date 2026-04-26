@@ -470,7 +470,7 @@ export default function Dashboard() {
                 date: formatLocalDateStr(new Date()),
                 offset: o,
             }));
-            const res = await fetch(`/api/spoonacular/recipes/popular?offset=${o}`);
+            const res = await authedFetch(`/api/spoonacular/recipes/popular?offset=${o}`);
             if (res.ok) {
                 const data = await res.json();
                 setPopularRecipes((data.recipes || []).slice(0, 8));

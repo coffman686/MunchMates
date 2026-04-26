@@ -147,7 +147,7 @@ export default function CreateRecipePage() {
                 const token = await ensureToken();
                 const formData = new FormData();
                 formData.append('file', imageFile);
-                const uploadRes = await fetch('/api/upload', {
+                const uploadRes = await authedFetch('/api/upload', {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                     body: formData,

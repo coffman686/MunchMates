@@ -333,8 +333,8 @@ export default function RecipeDetailPage() {
           }
         } else {
           const [infoRes, instructionsRes, savedRes] = await Promise.all([
-            fetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
-            fetch(
+            authedFetch(`/api/spoonacular/recipes/information?id=${recipeId}`),
+            authedFetch(
               `/api/spoonacular/recipes/searchRecipeInstructions?id=${recipeId}`
             ),
             authedFetch("/api/recipes/saved"),
@@ -348,7 +348,7 @@ export default function RecipeDetailPage() {
 
             // Fetch macro nutrition data (per serving) via nutrition widget endpoint
             try {
-              const nutritionRes = await fetch(`/api/spoonacular/recipes/nutrition?id=${recipeId}`);
+              const nutritionRes = await authedFetch(`/api/spoonacular/recipes/nutrition?id=${recipeId}`);
               if (nutritionRes.ok) {
                 const nutritionJson = await nutritionRes.json();
                 setNutrition(nutritionJson);
