@@ -9,25 +9,33 @@ export type DietaryPrefs = {
 
 let cache: DietaryPrefs = { diets: [], intolerances: [] };
 let hydratePromise: Promise<DietaryPrefs> | null = null;
+let hydrated = false;
 
 export async function ensureDietaryPrefsLoaded(): Promise<DietaryPrefs> {
     if (hydratePromise) return hydratePromise;
     hydratePromise = (async () => {
         try {
             const res = await authedFetch('/api/profile');
-            if (res.ok) {
-                const data = await res.json();
-                cache = {
-                    diets: Array.isArray(data.diets) ? data.diets : [],
-                    intolerances: Array.isArray(data.intolerances) ? data.intolerances : [],
-                };
+            if (!res.ok) {
+                hydratePromise = null;
+                return cache;
             }
+            const data = await res.json();
+            cache = {
+                diets: Array.isArray(data.diets) ? data.diets : [],
+                intolerances: Array.isArray(data.intolerances) ? data.intolerances : [],
+            };
+            hydrated = true;
         } catch {
-            // keep empty cache
+            hydratePromise = null;
         }
         return cache;
     })();
     return hydratePromise;
+}
+
+export function isDietaryPrefsHydrated(): boolean {
+    return hydrated;
 }
 
 export function getDietaryPrefs(): DietaryPrefs {
@@ -44,4 +52,11 @@ export function getIntolerances(): string {
 
 export function setDietaryPrefs(prefs: DietaryPrefs): void {
     cache = { diets: [...prefs.diets], intolerances: [...prefs.intolerances] };
+    hydrated = true;
+}
+
+export function resetDietaryPrefs(): void {
+    cache = { diets: [], intolerances: [] };
+    hydratePromise = null;
+    hydrated = false;
 }

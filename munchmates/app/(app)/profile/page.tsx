@@ -91,6 +91,8 @@ const ProfilePage = () => {
     const [diets, setDiets] = useState<string[]>([]);
     const [intolerances, setIntolerances] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState("");
+    const [saveSuccess, setSaveSuccess] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [dailyCalorieGoal, setDailyCalorieGoal] = useState("");
     const [dailyProteinGoal, setDailyProteinGoal] = useState("");
@@ -145,6 +147,8 @@ const ProfilePage = () => {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setSaving(true);
+        setSaveError("");
+        setSaveSuccess(false);
         try {
             const res = await authedFetch("/api/profile", {
                 method: "POST",
@@ -158,11 +162,17 @@ const ProfilePage = () => {
                     dailyFatGoal,
                 }),
             });
-            if (!res.ok) { setSaving(false); return; }
+            if (!res.ok) {
+                setSaveError("Could not save changes. Please try again.");
+                setSaving(false);
+                return;
+            }
             setDietaryPrefs({ diets, intolerances });
+            setSaveSuccess(true);
             setSaving(false);
         } catch (err) {
             console.error("Error saving profile", err);
+            setSaveError("Could not save changes. Please try again.");
             setSaving(false);
         }
     };
@@ -335,6 +345,12 @@ const ProfilePage = () => {
                                     </div>
                                 </div>
                                 {/* Save */}
+                                {saveError && (
+                                    <p className="text-[13px] font-medium text-red-500" role="alert">{saveError}</p>
+                                )}
+                                {saveSuccess && !saveError && (
+                                    <p className="text-[13px] font-medium text-green-600" role="status">Changes saved.</p>
+                                )}
                                 <Button type="submit" className="w-full h-11 rounded-xl text-[14px] font-semibold" disabled={saving}>
                                     <Save className="h-4 w-4 mr-2" />
                                     {saving ? "Saving..." : "Save Changes"}

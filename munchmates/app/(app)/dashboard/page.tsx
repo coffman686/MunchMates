@@ -47,7 +47,7 @@ import type { NutritionDaySummary, NutritionMetricProgress } from '@/lib/types/m
 import type { PantryItem } from '@/lib/types/pantry';
 import type { GroceryItem } from '@/lib/types/grocery';
 import type { PopularRecipe } from '@/lib/types/recipe';
-import { ensureDietaryPrefsLoaded, setDietaryPrefs } from '@/lib/dietary-prefs';
+import { ensureDietaryPrefsLoaded, isDietaryPrefsHydrated, setDietaryPrefs } from '@/lib/dietary-prefs';
 
 // initialize types
 type IdClaims = { name?: string; preferred_username?: string; email?: string };
@@ -222,40 +222,90 @@ export default function Dashboard() {
     // nutrition widget
     const [nutritionProgress, setNutritionProgress] = useState<NutritionProgressDial[]>(makeNutritionDials(null));
 
-    // Hydrate dietary prefs from API; open the first-run modal if uninitialized
     useEffect(() => {
-        ensureDietaryPrefsLoaded().then((prefs) => {
+        let cancelled = false;
+        (async () => {
+            const prefs = await ensureDietaryPrefsLoaded();
+            if (cancelled) return;
+
+            // One-time migration: existing users have prefs in localStorage but the API
+            // doesn't know about them yet. Push them up so /api/profile becomes source of truth.
+            if (
+                isDietaryPrefsHydrated() &&
+                prefs.diets.length === 0 &&
+                prefs.intolerances.length === 0
+            ) {
+                const lsDiets = localStorage.getItem("diets");
+                const lsIntolerances = localStorage.getItem("intolerances");
+                const migratedDiets = lsDiets ? lsDiets.split(",").filter(Boolean) : [];
+                const migratedIntolerances = lsIntolerances ? lsIntolerances.split(",").filter(Boolean) : [];
+                if (migratedDiets.length > 0 || migratedIntolerances.length > 0) {
+                    const current = await authedFetch("/api/profile");
+                    if (current.ok) {
+                        const profile = await current.json();
+                        const res = await authedFetch("/api/profile", {
+                            method: "POST",
+                            body: JSON.stringify({
+                                favoriteCuisines: profile.favoriteCuisines ?? "",
+                                dailyCalorieGoal: profile.dailyCalorieGoal ?? null,
+                                dailyProteinGoal: profile.dailyProteinGoal ?? null,
+                                dailyCarbGoal: profile.dailyCarbGoal ?? null,
+                                dailyFatGoal: profile.dailyFatGoal ?? null,
+                                diets: migratedDiets,
+                                intolerances: migratedIntolerances,
+                            }),
+                        });
+                        if (res.ok) {
+                            setDietaryPrefs({ diets: migratedDiets, intolerances: migratedIntolerances });
+                            localStorage.removeItem("diets");
+                            localStorage.removeItem("intolerances");
+                            if (!cancelled) {
+                                setDiets(migratedDiets);
+                                setIntolerances(migratedIntolerances);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
             setDiets(prefs.diets);
             setIntolerances(prefs.intolerances);
-        });
+        })();
+
         const localDietsInit = localStorage.getItem("hasDietsInit");
         if (localDietsInit !== "true") {
             setDietModal(true);
         }
+
+        return () => { cancelled = true; };
     }, []);
 
-    // Persist preferences to /api/profile on close, update cache, mark first-run done.
-    // Fetches current profile first so we don't wipe favoriteCuisines / calorie goals
-    // (the POST endpoint replaces all fields).
     async function closeDiet(e: React.SyntheticEvent) {
         e.preventDefault();
-        try {
-            const current = await authedFetch("/api/profile");
-            const profile = current.ok ? await current.json() : {};
-            await authedFetch("/api/profile", {
-                method: "POST",
-                body: JSON.stringify({
-                    favoriteCuisines: profile.favoriteCuisines ?? "",
-                    dailyCalorieGoal: profile.dailyCalorieGoal ?? null,
-                    dailyProteinGoal: profile.dailyProteinGoal ?? null,
-                    dailyCarbGoal: profile.dailyCarbGoal ?? null,
-                    dailyFatGoal: profile.dailyFatGoal ?? null,
-                    diets,
-                    intolerances,
-                }),
-            });
-            setDietaryPrefs({ diets, intolerances });
-        } catch { /* swallow — UI flag still set so the modal does not loop */ }
+        const current = await authedFetch("/api/profile");
+        if (!current.ok) {
+            window.alert("Could not load your profile to save dietary preferences. Please try again.");
+            return;
+        }
+        const profile = await current.json();
+        const res = await authedFetch("/api/profile", {
+            method: "POST",
+            body: JSON.stringify({
+                favoriteCuisines: profile.favoriteCuisines ?? "",
+                dailyCalorieGoal: profile.dailyCalorieGoal ?? null,
+                dailyProteinGoal: profile.dailyProteinGoal ?? null,
+                dailyCarbGoal: profile.dailyCarbGoal ?? null,
+                dailyFatGoal: profile.dailyFatGoal ?? null,
+                diets,
+                intolerances,
+            }),
+        });
+        if (!res.ok) {
+            window.alert("Could not save your dietary preferences. Please try again.");
+            return;
+        }
+        setDietaryPrefs({ diets, intolerances });
         localStorage.setItem("hasDietsInit", "true");
         setDietModal(false);
     }
