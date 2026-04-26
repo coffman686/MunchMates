@@ -49,10 +49,16 @@ services:
       # KC_HOSTNAME: https://auth-dev.example.com
     ports:
       - "8080:8080"
+      - "9000:9000"
     volumes:
       - ./import:/opt/keycloak/data/import
       - ./themes:/opt/keycloak/themes
-
+    healthcheck:
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   mailpit:
     image: axllent/mailpit:latest
