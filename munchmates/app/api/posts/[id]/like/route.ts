@@ -26,20 +26,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             create: { id: userId, name: p.name ?? "", username: p.preferred_username ?? "" },
         });
 
-        const existing = await prisma.postLike.findUnique({
-            where: { postId_userId: { postId, userId } },
+        const [{ count: deleted }, likeCount] = await prisma.$transaction(async (tx) => {
+            const del = await tx.postLike.deleteMany({ where: { postId, userId } });
+            if (del.count === 0) {
+                await tx.postLike.create({ data: { postId, userId } });
+            }
+            const total = await tx.postLike.count({ where: { postId } });
+            return [del, total] as const;
         });
-
-        let liked: boolean;
-        if (existing) {
-            await prisma.postLike.delete({ where: { postId_userId: { postId, userId } } });
-            liked = false;
-        } else {
-            await prisma.postLike.create({ data: { postId, userId } });
-            liked = true;
-        }
-
-        const likeCount = await prisma.postLike.count({ where: { postId } });
+        const liked = deleted === 0;
 
         return NextResponse.json({ ok: true, liked, likeCount });
     } catch (error) {

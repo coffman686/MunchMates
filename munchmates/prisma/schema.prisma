@@ -57,8 +57,9 @@ model SavedRecipe {
   @@unique([userId, recipeId])
 }
 
-// User-created recipes (from custom recipes route)
-// IDs start at 100000 to avoid conflicts with Spoonacular recipe IDs
+// User-created recipes (from custom recipes route).
+// Custom IDs and Spoonacular IDs share the same numeric space, so callers
+// that need to distinguish must consult the CustomRecipe table.
 model CustomRecipe {
   id             Int      @id @default(autoincrement())
   userId         String
@@ -213,7 +214,7 @@ model GroceryCategory {
 }
 
 // Community post: caption plus an optional image and/or recipe reference.
-// recipeType is "spoonacular" or "custom"; recipeName and recipeImage are
+// recipeType is "spoonacular" or "custom". recipeName and recipeImage are
 // cached on the row so the feed renders without joins and so posts survive
 // deletion of the underlying recipe.
 model Post {

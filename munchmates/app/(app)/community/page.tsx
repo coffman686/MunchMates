@@ -135,11 +135,16 @@ const Community = () => {
         };
     }, []);
 
-    const loadPosts = useCallback(async () => {
+    const loadPosts = useCallback(async (attempt = 0) => {
         try {
             const res = await authedFetch('/api/posts');
             if (res.status === 401) {
-                setTimeout(loadPosts, 300);
+                if (attempt < 3) {
+                    setTimeout(() => loadPosts(attempt + 1), 300);
+                    return;
+                }
+                setLoadError('Authentication is taking longer than expected. Try refreshing.');
+                setIsLoading(false);
                 return;
             }
             if (!res.ok) {
@@ -218,12 +223,13 @@ const Community = () => {
             setCommentLoading(prev => ({ ...prev, [postId]: true }));
             try {
                 const res = await authedFetch(`/api/posts/${postId}/comments`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setCommentsByPost(prev => ({ ...prev, [postId]: data.comments || [] }));
-                }
+                if (!res.ok) throw new Error('Comments load failed');
+                const data = await res.json();
+                setCommentsByPost(prev => ({ ...prev, [postId]: data.comments || [] }));
             } catch (err) {
                 console.error('Error loading comments:', err);
+                alert('Failed to load comments.');
+                setOpenComments(prev => ({ ...prev, [postId]: false }));
             } finally {
                 setCommentLoading(prev => ({ ...prev, [postId]: false }));
             }
@@ -272,6 +278,7 @@ const Community = () => {
             );
         } catch (err) {
             console.error('Error deleting comment:', err);
+            alert('Failed to delete comment.');
         }
     };
 

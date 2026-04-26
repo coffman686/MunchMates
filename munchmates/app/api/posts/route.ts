@@ -7,7 +7,7 @@
 // POST → Creates a new post for the authenticated user. A post requires a
 //        caption and may optionally include an uploaded image, a recipe
 //        reference (Spoonacular or custom) with cached name/image, and a
-//        1–5 star rating when a recipe is attached.
+//        1-5 star rating when a recipe is attached.
 // Backed by Postgres via Prisma; data persists across server restarts.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,6 +16,13 @@ import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
 
 const MAX_CAPTION_LEN = 2000;
+
+function safeUploadUrl(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.startsWith("/uploads/") ? trimmed : null;
+}
 
 export async function GET(req: NextRequest) {
     try {
@@ -70,10 +77,10 @@ export async function POST(req: NextRequest) {
             return errorResponse(400, `Caption must be ${MAX_CAPTION_LEN} characters or fewer`);
         }
 
-        const image =
-            typeof body?.image === "string" && body.image.trim() !== ""
-                ? body.image.trim()
-                : null;
+        if (body?.image != null && safeUploadUrl(body.image) === null) {
+            return errorResponse(400, "Invalid image URL");
+        }
+        const image = safeUploadUrl(body?.image);
 
         let recipeId: number | null = null;
         let recipeType: string | null = null;

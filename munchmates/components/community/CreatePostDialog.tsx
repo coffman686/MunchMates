@@ -6,7 +6,7 @@
 // - Optional recipe reference picker that merges the user's saved recipes
 //   with their custom recipes, labeling each as "Spoonacular" or "Custom"
 //   based on the authoritative CustomRecipe table (not an ID range)
-// - Optional 1–5 star rating, shown only when a recipe is attached
+// - Optional 1-5 star rating, shown only when a recipe is attached
 // - On submit, POSTs to `/api/posts` and returns the created post to the
 //   parent via `onPostCreated` so it can prepend to the feed
 
