@@ -5,6 +5,7 @@
 
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import {
   Dialog,
@@ -23,14 +24,28 @@ import { ensureDietaryPrefsLoaded, getDiets, getIntolerances } from '@/lib/dieta
 import { authedFetch } from '@/lib/authedFetch';
 import type { SavedRecipe, RecipeSearchResult as Recipe } from '@/lib/types/recipe';
 
+const CUSTOM_RECIPE_ID_START = 100000;
+
+const isCustomRecipeId = (recipeId: number) => recipeId >= CUSTOM_RECIPE_ID_START;
+
 const getSavedRecipeImage = (recipe: SavedRecipe) => {
   if (recipe.recipeImage) return recipe.recipeImage;
-  return recipe.recipeId < 100000
+  return !isCustomRecipeId(recipe.recipeId)
     ? `https://img.spoonacular.com/recipes/${recipe.recipeId}-636x393.jpg`
     : '';
 };
 
-type TabType = 'search' | 'saved';
+type CustomRecipe = {
+  id: number;
+  title: string;
+  image?: string;
+  servings: number;
+  readyInMinutes: number;
+  dishTypes: string[];
+  cuisines: string[];
+};
+
+type TabType = 'search' | 'saved' | 'my';
 
 interface RecipePickerDialogProps {
   open: boolean;
@@ -75,6 +90,8 @@ export default function RecipePickerDialog({
 
   // Saved recipes state
   const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
+  const [myRecipes, setMyRecipes] = useState<CustomRecipe[]>([]);
+  const [isLoadingMyRecipes, setIsLoadingMyRecipes] = useState(false);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
 
   // Day selection state
@@ -180,10 +197,33 @@ export default function RecipePickerDialog({
     }
   };
 
+  const loadMyRecipes = async () => {
+    setIsLoadingMyRecipes(true);
+    try {
+      const res = await authedFetch('/api/recipes/create');
+      if (res.status === 401) {
+        setTimeout(loadMyRecipes, 300);
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        setMyRecipes(data.recipes || []);
+      } else {
+        setMyRecipes([]);
+      }
+    } catch (error) {
+      console.error('Error loading custom recipes:', error);
+      setMyRecipes([]);
+    } finally {
+      setIsLoadingMyRecipes(false);
+    }
+  };
+
   // Load saved recipes when dialog opens
   useEffect(() => {
     if (open) {
       loadSavedRecipes();
+      loadMyRecipes();
     }
   }, [open]);
 
@@ -198,12 +238,17 @@ export default function RecipePickerDialog({
   const handleSavedRecipeClick = async (savedRecipe: SavedRecipe) => {
     setIsLoadingSaved(true);
     try {
-      // Fetch full recipe info from Spoonacular API
-      const response = await authedFetch(`/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`);
+      const recipeDetailsUrl = isCustomRecipeId(savedRecipe.recipeId)
+        ? `/api/recipes/create?id=${savedRecipe.recipeId}`
+        : `/api/spoonacular/recipes/info?id=${savedRecipe.recipeId}`;
+      const response = await authedFetch(recipeDetailsUrl);
       if (!response.ok) {
         throw new Error('Failed to fetch recipe info');
       }
-      const recipeInfo = await response.json();
+      const recipePayload = await response.json();
+      const recipeInfo = isCustomRecipeId(savedRecipe.recipeId)
+        ? recipePayload.recipe
+        : recipePayload;
 
       // Convert to Recipe format for the day selection flow
       const recipe: Recipe = {
@@ -225,6 +270,20 @@ export default function RecipePickerDialog({
     } finally {
       setIsLoadingSaved(false);
     }
+  };
+
+  const handleMyRecipeClick = (recipe: CustomRecipe) => {
+    setSelectedRecipe({
+      id: recipe.id,
+      title: recipe.title,
+      image: recipe.image || '',
+      score: 0,
+      servings: recipe.servings || 1,
+      readyInMinutes: recipe.readyInMinutes || 30,
+      cuisines: recipe.cuisines || [],
+      dishTypes: recipe.dishTypes || [],
+    });
+    setSelectedDays([currentDayDate]);
   };
 
   // Day selection view
@@ -342,7 +401,7 @@ export default function RecipePickerDialog({
         <DialogHeader>
           <DialogTitle>Add Recipe to Meal Plan</DialogTitle>
           <DialogDescription>
-            Search for recipes or choose from your saved favorites
+            Search for recipes or choose from your saved favorites and custom recipes
           </DialogDescription>
         </DialogHeader>
 
@@ -374,6 +433,23 @@ export default function RecipePickerDialog({
             {savedRecipes.length > 0 && (
               <Badge variant="secondary" className="ml-1 text-xs">
                 {savedRecipes.length}
+              </Badge>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('my')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'my'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <ChefHat className="h-4 w-4" />
+            My Recipes
+            {myRecipes.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">
+                {myRecipes.length}
               </Badge>
             )}
           </button>
@@ -531,6 +607,72 @@ export default function RecipePickerDialog({
                   onClick={() => setActiveTab('search')}
                 >
                   Search for Recipes
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'my' && (
+          <div className="flex-1 overflow-y-auto mt-4 -mx-6 px-6">
+            {isLoadingMyRecipes ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="h-12 w-12 text-muted-foreground animate-spin mb-4" />
+                <p className="text-muted-foreground">Loading your recipes...</p>
+              </div>
+            ) : myRecipes.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                {myRecipes.map((recipe) => (
+                  <Card
+                    key={recipe.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
+                    onClick={() => handleMyRecipeClick(recipe)}
+                  >
+                    <div className="h-32 bg-gradient-to-br from-primary/20 to-muted flex items-center justify-center">
+                      {recipe.image ? (
+                        <img
+                          src={recipe.image}
+                          alt={recipe.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ChefHat className="h-12 w-12 text-muted-foreground" />
+                      )}
+                    </div>
+                    <CardContent className="p-3">
+                      <h3 className="font-medium text-sm leading-tight line-clamp-2 mb-2">
+                        {recipe.title}
+                      </h3>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {recipe.dishTypes?.slice(0, 2).map((type) => (
+                          <Badge key={type} variant="secondary" className="text-xs">
+                            {type}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{recipe.readyInMinutes} min</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          <span>{recipe.servings}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No custom recipes yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Create your own recipes and add them to your meal plan here
+                </p>
+                <Button asChild variant="outline" className="mt-4">
+                  <Link href="/recipes/create">Create Recipe</Link>
                 </Button>
               </div>
             )}

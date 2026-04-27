@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft, Clock, Users, Upload, X, Plus, Minus } from 'lucide-react';
@@ -54,8 +54,15 @@ interface StructuredIngredient {
     unit: string;
 }
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback;
+
 export default function CreateRecipePage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const editParam = searchParams.get('edit');
+    const editRecipeId = editParam ? Number(editParam) : null;
+    const isEditMode = editRecipeId != null && !Number.isNaN(editRecipeId);
 
     const [title, setTitle] = useState('');
     const [readyInMinutes, setReadyInMinutes] = useState(30);
@@ -71,7 +78,84 @@ export default function CreateRecipePage() {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isRecipeLoading, setIsRecipeLoading] = useState(isEditMode);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const clearFieldError = (field: string) => {
+        setErrors((prev) => {
+            if (!(field in prev)) return prev;
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        if (!isEditMode || !editRecipeId) {
+            setIsRecipeLoading(false);
+            setLoadError(null);
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadRecipe = async () => {
+            setIsRecipeLoading(true);
+            setLoadError(null);
+
+            try {
+                const response = await authedFetch(`/api/recipes/create?id=${editRecipeId}`);
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => null);
+                    throw new Error(errData?.error?.message || 'Failed to load recipe');
+                }
+
+                const data = await response.json();
+                if (cancelled) return;
+
+                const recipe = data.recipe;
+                setTitle(recipe.title || '');
+                setReadyInMinutes(recipe.readyInMinutes || 30);
+                setServings(recipe.servings || 1);
+                setDishType(recipe.dishTypes?.[0] || 'main course');
+                setCuisine(recipe.cuisines?.[0] || 'American');
+                setIngredients(
+                    (recipe.extendedIngredients || []).map((ingredient: StructuredIngredient & { original?: string }) => ({
+                        name: ingredient.name || ingredient.original || '',
+                        amount: Number(ingredient.amount) || 0,
+                        unit: ingredient.unit || '',
+                    }))
+                );
+                const loadedSteps = recipe.instructions
+                    ? recipe.instructions
+                        .split('\n')
+                        .map((line: string) => line.replace(/^\d+\.\s*/, '').trim())
+                        .filter(Boolean)
+                    : [];
+                setSteps(loadedSteps.length > 0 ? loadedSteps : ['']);
+                setSummary(recipe.summary || '');
+                setImageFile(null);
+                setImagePreview(recipe.image || null);
+                setErrors({});
+            } catch (error: unknown) {
+                console.error('Error loading recipe for editing:', error);
+                if (!cancelled) {
+                    setLoadError(getErrorMessage(error, 'Failed to load recipe'));
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsRecipeLoading(false);
+                }
+            }
+        };
+
+        loadRecipe();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [editRecipeId, isEditMode]);
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -90,7 +174,7 @@ export default function CreateRecipePage() {
         setNewIngredientName('');
         setNewIngredientAmount('');
         setNewIngredientUnit('');
-        setErrors(prev => { const { ingredients: _, ...rest } = prev; return rest; });
+        clearFieldError('ingredients');
     };
 
     const handleSelectIngredient = (item: string) => {
@@ -138,7 +222,10 @@ export default function CreateRecipePage() {
 
         setIsSubmitting(true);
         try {
-            let imageUrl: string | undefined;
+            let imageUrl =
+                imagePreview && !imagePreview.startsWith('blob:')
+                    ? imagePreview
+                    : undefined;
 
             if (imageFile) {
                 const formData = new FormData();
@@ -165,8 +252,10 @@ export default function CreateRecipePage() {
                 original: formatIngredientDisplay(ing),
             }));
 
-            const response = await authedFetch('/api/recipes/create', {
-                method: 'POST',
+            const response = await authedFetch(
+                isEditMode && editRecipeId ? `/api/recipes/create?id=${editRecipeId}` : '/api/recipes/create',
+                {
+                method: isEditMode ? 'PUT' : 'POST',
                 body: JSON.stringify({
                     title: title.trim(),
                     servings,
@@ -183,16 +272,16 @@ export default function CreateRecipePage() {
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => null);
-                throw new Error(errData?.error?.message || 'Failed to create recipe');
+                throw new Error(errData?.error?.message || `Failed to ${isEditMode ? 'update' : 'create'} recipe`);
             }
 
             const data = await response.json();
             if (data.id) {
                 router.push(`/recipes/${data.id}`);
             }
-        } catch (error: any) {
-            console.error('Error creating recipe:', error);
-            alert(error.message || 'Failed to create recipe. Please try again.');
+        } catch (error: unknown) {
+            console.error(`Error ${isEditMode ? 'updating' : 'creating'} recipe:`, error);
+            alert(getErrorMessage(error, `Failed to ${isEditMode ? 'update' : 'create'} recipe. Please try again.`));
         } finally {
             setIsSubmitting(false);
         }
@@ -205,13 +294,44 @@ export default function CreateRecipePage() {
         }
     };
 
+    const cancelHref = isEditMode && editRecipeId ? `/recipes/${editRecipeId}` : '/recipes/my-recipes';
+
+    if (isRecipeLoading) {
+        return (
+            <div className="min-h-full bg-background px-4 sm:px-6 lg:px-8 py-12">
+                <div className="mx-auto max-w-2xl rounded-2xl border bg-muted/40 p-8 text-center">
+                    <h1 className="text-2xl font-semibold">Loading recipe editor...</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                        Pulling in your saved recipe so you can make changes.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="min-h-full bg-background px-4 sm:px-6 lg:px-8 py-12">
+                <div className="mx-auto max-w-2xl rounded-2xl border bg-muted/40 p-8 text-center">
+                    <h1 className="text-2xl font-semibold">Unable to load recipe</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
+                    <div className="mt-6">
+                        <Link href="/recipes/my-recipes">
+                            <Button className="rounded-full">Back to My Recipes</Button>
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-full bg-background">
             {/* Header Section */}
             <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-8">
                 {/* Back button */}
                 <Link
-                    href="/recipes/my-recipes"
+                    href={cancelHref}
                     className="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted transition-colors mb-4"
                 >
                     <ArrowLeft className="h-5 w-5 text-muted-foreground" />
@@ -223,11 +343,11 @@ export default function CreateRecipePage() {
                         {/* Title input */}
                         <input
                             type="text"
-                            placeholder="Recipe Title"
+                            placeholder={isEditMode ? 'Update Recipe Title' : 'Recipe Title'}
                             value={title}
                             onChange={(e) => {
                                 setTitle(e.target.value);
-                                if (errors.title) setErrors(prev => { const { title: _, ...rest } = prev; return rest; });
+                                if (errors.title) clearFieldError('title');
                             }}
                             className={`text-2xl sm:text-3xl font-bold tracking-tight bg-transparent border-none outline-none w-full placeholder:text-muted-foreground/40 mb-4 ${errors.title ? 'placeholder:text-destructive/60' : ''}`}
                         />
@@ -301,12 +421,12 @@ export default function CreateRecipePage() {
                                 disabled={isSubmitting}
                                 className="rounded-full"
                             >
-                                {isSubmitting ? 'Saving...' : 'Save Recipe'}
+                                {isSubmitting ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save Recipe'}
                             </Button>
                             <Button
                                 variant="outline"
                                 className="rounded-full"
-                                onClick={() => router.push('/recipes/my-recipes')}
+                                onClick={() => router.push(cancelHref)}
                                 disabled={isSubmitting}
                             >
                                 Cancel
@@ -335,6 +455,19 @@ export default function CreateRecipePage() {
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
                                         <Upload className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setImageFile(null);
+                                            setImagePreview(null);
+                                        }}
+                                        className="absolute top-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/75"
+                                        aria-label="Remove recipe image"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
                                 </>
                             ) : (
                                 <div className="flex flex-col h-full w-full items-center justify-center bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950 dark:to-amber-950 group-hover:from-orange-100 group-hover:to-amber-100 dark:group-hover:from-orange-950/80 dark:group-hover:to-amber-950/80 transition-colors">

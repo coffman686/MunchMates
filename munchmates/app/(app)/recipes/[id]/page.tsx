@@ -21,6 +21,7 @@ import {
   FolderHeart,
   Heart,
   Minus,
+  Pencil,
   Plus,
   Star,
   Users,
@@ -285,6 +286,7 @@ export default function RecipeDetailPage() {
   const [instructions, setInstructions] = useState<InstructionStep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
+  const [isCustomRecipe, setIsCustomRecipe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(
     new Set()
@@ -305,6 +307,7 @@ export default function RecipeDetailPage() {
       try {
         const customRes = await authedFetch(`/api/recipes/create?id=${recipeId}`);
         const isCustom = customRes.ok;
+        setIsCustomRecipe(isCustom);
 
         if (isCustom) {
           const [data, savedRes] = await Promise.all([
@@ -512,6 +515,7 @@ export default function RecipeDetailPage() {
   const hasAnyInstructions = hasStructuredInstructions || hasPlainInstructions;
   const hasIngredients =
     recipe.extendedIngredients && recipe.extendedIngredients.length > 0;
+  const showEditButton = isCustomRecipe && backHref === "/recipes/my-recipes";
 
   return (
     <>
@@ -639,6 +643,15 @@ export default function RecipeDetailPage() {
                     <FolderHeart className="h-5 w-5 text-muted-foreground" />
                   </button>
                 </div>
+                {showEditButton && (
+                  <Link
+                    href={`/recipes/create?edit=${recipe.id}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border bg-background/70 text-xs font-medium text-foreground hover:bg-background transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </Link>
+                )}
                 <button
                   onClick={() => {
                     if (!recipe) return;
