@@ -128,7 +128,7 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
         setStatus(null);
         let successCount = 0;
         let errorCount = 0;
-        let errorMessages: string[] = [];
+        const errorMessages: string[] = [];
 
         // Add to newly selected collections
         const toAdd = selectedIds.filter(id => !initialSelectedIds.includes(id));
