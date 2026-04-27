@@ -1,4 +1,8 @@
-import { AggregatedIngredient } from "@/lib/types/meal-plan";
+// lib/grocery-consolidation.ts
+// Deduplicates grocery list items
+
+import type { AggregatedIngredient } from "@/lib/types/meal-plan";
+import { getOrSet } from "./utils";
 
 export interface ConsolidationInput {
   name: string;
@@ -37,38 +41,144 @@ interface GroupedIngredient {
   buckets: Map<string, ConsolidatedBucket>;
 }
 
+// default unit definitions
 const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   ml: { kind: "volume", baseUnit: "ml", factor: 1, canonicalUnit: "ml" },
-  milliliter: { kind: "volume", baseUnit: "ml", factor: 1, canonicalUnit: "ml" },
-  milliliters: { kind: "volume", baseUnit: "ml", factor: 1, canonicalUnit: "ml" },
+  milliliter: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 1,
+    canonicalUnit: "ml",
+  },
+  milliliters: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 1,
+    canonicalUnit: "ml",
+  },
   l: { kind: "volume", baseUnit: "ml", factor: 1000, canonicalUnit: "l" },
   liter: { kind: "volume", baseUnit: "ml", factor: 1000, canonicalUnit: "l" },
-  liters: { kind: "volume", baseUnit: "ml", factor: 1000, canonicalUnit: "l" },
-  tsp: { kind: "volume", baseUnit: "ml", factor: 4.92892, canonicalUnit: "tsp" },
-  teaspoon: { kind: "volume", baseUnit: "ml", factor: 4.92892, canonicalUnit: "tsp" },
-  teaspoons: { kind: "volume", baseUnit: "ml", factor: 4.92892, canonicalUnit: "tsp" },
-  tbsp: { kind: "volume", baseUnit: "ml", factor: 14.7868, canonicalUnit: "tbsp" },
-  tablespoon: { kind: "volume", baseUnit: "ml", factor: 14.7868, canonicalUnit: "tbsp" },
-  tablespoons: { kind: "volume", baseUnit: "ml", factor: 14.7868, canonicalUnit: "tbsp" },
-  cup: { kind: "volume", baseUnit: "ml", factor: 236.588, canonicalUnit: "cup" },
-  cups: { kind: "volume", baseUnit: "ml", factor: 236.588, canonicalUnit: "cup" },
-  "fl oz": { kind: "volume", baseUnit: "ml", factor: 29.5735, canonicalUnit: "fl oz" },
-  "fluid ounce": { kind: "volume", baseUnit: "ml", factor: 29.5735, canonicalUnit: "fl oz" },
-  "fluid ounces": { kind: "volume", baseUnit: "ml", factor: 29.5735, canonicalUnit: "fl oz" },
+  liters: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 1000,
+    canonicalUnit: "l",
+  },
+  tsp: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 4.92892,
+    canonicalUnit: "tsp",
+  },
+  teaspoon: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 4.92892,
+    canonicalUnit: "tsp",
+  },
+  teaspoons: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 4.92892,
+    canonicalUnit: "tsp",
+  },
+  tbsp: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 14.7868,
+    canonicalUnit: "tbsp",
+  },
+  tablespoon: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 14.7868,
+    canonicalUnit: "tbsp",
+  },
+  tablespoons: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 14.7868,
+    canonicalUnit: "tbsp",
+  },
+  cup: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 236.588,
+    canonicalUnit: "cup",
+  },
+  cups: {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 236.588,
+    canonicalUnit: "cup",
+  },
+  "fl oz": {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 29.5735,
+    canonicalUnit: "fl oz",
+  },
+  "fluid ounce": {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 29.5735,
+    canonicalUnit: "fl oz",
+  },
+  "fluid ounces": {
+    kind: "volume",
+    baseUnit: "ml",
+    factor: 29.5735,
+    canonicalUnit: "fl oz",
+  },
 
   g: { kind: "weight", baseUnit: "g", factor: 1, canonicalUnit: "g" },
   gram: { kind: "weight", baseUnit: "g", factor: 1, canonicalUnit: "g" },
   grams: { kind: "weight", baseUnit: "g", factor: 1, canonicalUnit: "g" },
   kg: { kind: "weight", baseUnit: "g", factor: 1000, canonicalUnit: "kg" },
-  kilogram: { kind: "weight", baseUnit: "g", factor: 1000, canonicalUnit: "kg" },
-  kilograms: { kind: "weight", baseUnit: "g", factor: 1000, canonicalUnit: "kg" },
+  kilogram: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 1000,
+    canonicalUnit: "kg",
+  },
+  kilograms: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 1000,
+    canonicalUnit: "kg",
+  },
   oz: { kind: "weight", baseUnit: "g", factor: 28.3495, canonicalUnit: "oz" },
-  ounce: { kind: "weight", baseUnit: "g", factor: 28.3495, canonicalUnit: "oz" },
-  ounces: { kind: "weight", baseUnit: "g", factor: 28.3495, canonicalUnit: "oz" },
+  ounce: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 28.3495,
+    canonicalUnit: "oz",
+  },
+  ounces: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 28.3495,
+    canonicalUnit: "oz",
+  },
   lb: { kind: "weight", baseUnit: "g", factor: 453.592, canonicalUnit: "lb" },
-  lbs: { kind: "weight", baseUnit: "g", factor: 453.592, canonicalUnit: "lb" },
-  pound: { kind: "weight", baseUnit: "g", factor: 453.592, canonicalUnit: "lb" },
-  pounds: { kind: "weight", baseUnit: "g", factor: 453.592, canonicalUnit: "lb" },
+  lbs: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 453.592,
+    canonicalUnit: "lb",
+  },
+  pound: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 453.592,
+    canonicalUnit: "lb",
+  },
+  pounds: {
+    kind: "weight",
+    baseUnit: "g",
+    factor: 453.592,
+    canonicalUnit: "lb",
+  },
 
   "": { kind: "count", baseUnit: "count", factor: 1, canonicalUnit: "" },
   piece: { kind: "count", baseUnit: "count", factor: 1, canonicalUnit: "" },
@@ -79,15 +189,45 @@ const UNIT_DEFINITIONS: Record<string, UnitDefinition> = {
   dozen: { kind: "count", baseUnit: "count", factor: 12, canonicalUnit: "" },
   pair: { kind: "count", baseUnit: "count", factor: 2, canonicalUnit: "" },
   half: { kind: "count", baseUnit: "count", factor: 0.5, canonicalUnit: "" },
-  clove: { kind: "count", baseUnit: "clove", factor: 1, canonicalUnit: "clove" },
-  cloves: { kind: "count", baseUnit: "clove", factor: 1, canonicalUnit: "clove" },
-  slice: { kind: "count", baseUnit: "slice", factor: 1, canonicalUnit: "slice" },
-  slices: { kind: "count", baseUnit: "slice", factor: 1, canonicalUnit: "slice" },
+  clove: {
+    kind: "count",
+    baseUnit: "clove",
+    factor: 1,
+    canonicalUnit: "clove",
+  },
+  cloves: {
+    kind: "count",
+    baseUnit: "clove",
+    factor: 1,
+    canonicalUnit: "clove",
+  },
+  slice: {
+    kind: "count",
+    baseUnit: "slice",
+    factor: 1,
+    canonicalUnit: "slice",
+  },
+  slices: {
+    kind: "count",
+    baseUnit: "slice",
+    factor: 1,
+    canonicalUnit: "slice",
+  },
   can: { kind: "count", baseUnit: "can", factor: 1, canonicalUnit: "can" },
   cans: { kind: "count", baseUnit: "can", factor: 1, canonicalUnit: "can" },
-  package: { kind: "count", baseUnit: "package", factor: 1, canonicalUnit: "package" },
-  packages: { kind: "count", baseUnit: "package", factor: 1, canonicalUnit: "package" },
-}
+  package: {
+    kind: "count",
+    baseUnit: "package",
+    factor: 1,
+    canonicalUnit: "package",
+  },
+  packages: {
+    kind: "count",
+    baseUnit: "package",
+    factor: 1,
+    canonicalUnit: "package",
+  },
+};
 
 function roundAmount(amount: number): number {
   return Math.round(amount * 100) / 100;
@@ -101,7 +241,11 @@ function getUnitDefinition(unit: string): UnitDefinition | null {
   return UNIT_DEFINITIONS[normalizeUnit(unit)] ?? null;
 }
 
-function getBucketKey(unit: string): { key: string; canonicalUnit: string; kind: UnitKind } {
+function getBucketKey(unit: string): {
+  key: string;
+  canonicalUnit: string;
+  kind: UnitKind;
+} {
   const definition = getUnitDefinition(unit);
   if (!definition) {
     const normalizedUnit = normalizeUnit(unit);
@@ -119,7 +263,10 @@ function getBucketKey(unit: string): { key: string; canonicalUnit: string; kind:
   };
 }
 
-function chooseDisplayUnit(totalAmount: number, baseUnit: string): { amount: number; unit: string } {
+function chooseDisplayUnit(
+  totalAmount: number,
+  baseUnit: string,
+): { amount: number; unit: string } {
   if (baseUnit === "ml") {
     if (totalAmount >= 1000) return { amount: totalAmount / 1000, unit: "l" };
     if (totalAmount >= 236.588) return { amount: totalAmount / 236.588, unit: "cup" };
@@ -165,9 +312,10 @@ export function formatQuantity(amount: number, unit: string): string {
   return `${numeric} ${unit}`;
 }
 
+// Aggregate duplicated items into single clean entry
 function buildAggregatedIngredient(
   group: GroupedIngredient,
-  bucket: ConsolidatedBucket
+  bucket: ConsolidatedBucket,
 ): AggregatedIngredient {
   const definition = getUnitDefinition(bucket.canonicalUnit);
 
@@ -208,6 +356,7 @@ function buildAggregatedIngredient(
   };
 }
 
+// Consolidate and deduplicate items
 export function consolidateIngredients(items: ConsolidationInput[]): AggregatedIngredient[] {
   const grouped = new Map<string, GroupedIngredient>();
 
@@ -221,28 +370,22 @@ export function consolidateIngredients(items: ConsolidationInput[]): AggregatedI
     const { key, canonicalUnit, kind } = getBucketKey(normalizedUnitValue);
     const ingredientKey = name;
 
-    if (!grouped.has(ingredientKey)) {
-      grouped.set(ingredientKey, {
-        displayName: name,
-        normalizedName: ingredientKey,
-        category,
-        sourceRecipes: new Set<string>(),
-        buckets: new Map<string, ConsolidatedBucket>(),
-      });
-    }
+    const group = getOrSet(grouped, ingredientKey, () => ({
+      displayName: name,
+      normalizedName: ingredientKey,
+      category,
+      sourceRecipes: new Set<string>(),
+      buckets: new Map<string, ConsolidatedBucket>(),
+    }));
 
-    const group = grouped.get(ingredientKey)!;
     if (item.sourceRecipe) group.sourceRecipes.add(item.sourceRecipe);
-    if (!group.buckets.has(key)) {
-      group.buckets.set(key, {
-        key,
-        kind,
-        canonicalUnit,
-        amounts: [],
-      });
-    }
 
-    group.buckets.get(key)!.amounts.push({
+    getOrSet(group.buckets, key, () => ({
+      key,
+      kind,
+      canonicalUnit,
+      amounts: [],
+    })).amounts.push({
       amount,
       unit: normalizedUnitValue,
     });
@@ -264,6 +407,7 @@ export function consolidateIngredients(items: ConsolidationInput[]): AggregatedI
   return consolidated;
 }
 
+// Handle fractional quantities
 function parseFractionToken(token: string): number | null {
   if (!token.includes("/")) {
     const numeric = Number(token);
@@ -277,6 +421,7 @@ function parseFractionToken(token: string): number | null {
   return top / bottom;
 }
 
+// Parse quantity information into structured amount and unit
 function parseQuantityPart(part: string): ParsedQuantityPart | null {
   const trimmed = part.trim();
   if (!trimmed) return null;
@@ -306,13 +451,19 @@ export function parseQuantityString(quantity: string | null | undefined): Parsed
     .filter((part): part is ParsedQuantityPart => part !== null);
 }
 
+// Merge raw quantities values together
 export function mergeQuantityStrings(
   existingQuantity: string | null | undefined,
   incomingAmount: number,
-  incomingUnit: string
+  incomingUnit: string,
 ): string | null {
   const incoming = consolidateIngredients([
-    { name: "ingredient", amount: incomingAmount, unit: incomingUnit, category: "Pantry" },
+    {
+      name: "ingredient",
+      amount: incomingAmount,
+      unit: incomingUnit,
+      category: "Pantry",
+    },
   ]);
   if (incoming.length === 0) return existingQuantity ?? null;
 

@@ -8,12 +8,12 @@ export interface MealPlanEntry {
   recipeId: number;
   title: string;
   image?: string;
-  servings: number;         // User's desired servings
+  servings: number; // User's desired servings
   originalServings: number; // Recipe's default servings (from Spoonacular)
   readyInMinutes?: number;
 }
 
-export type MealType = 'breakfast' | 'lunch' | 'dinner';
+export type MealType = "breakfast" | "lunch" | "dinner";
 
 export interface DayPlan {
   date: string; // ISO date string (YYYY-MM-DD)
@@ -41,7 +41,7 @@ export interface NutritionMetricProgress {
   percent: number | null;
   remaining: number | null;
   status: "under" | "met" | "over" | "no-goal";
-};
+}
 
 export interface NutritionDaySummary {
   date: string;
@@ -76,13 +76,13 @@ export interface NutritionDaySummary {
       fat: number;
     };
   }[];
-};
+}
 
 // Format date as YYYY-MM-DD in local timezone (avoids UTC shift issues)
 function formatLocalDateStr(d: Date): string {
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -123,5 +123,5 @@ export function getWeekMonday(date: Date): Date {
 
 // Generate unique ID for meal entries
 export function generateMealEntryId(): string {
-  return `meal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `meal-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }

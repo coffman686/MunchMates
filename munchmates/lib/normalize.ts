@@ -1,52 +1,58 @@
+// lib/normalize.ts
+// Provides normalization database and functions for several MunchMates concepts
+// - pantry input
+// - spoonacular recipe ingredients
+// - custom recipe ingredients
+// - generalized food words for search queries
+
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createBrotliDecompress } from "node:zlib";
-import nlp from "compromise"
+import nlp from "compromise";
 
 type NFKDSanitizedItem = string;
 type NLPProcessedItem = string;
 type CanonicalName = string;
 
 // load ingredients aliases
-const aliasData = await loadJsonBr(path.join(process.cwd(), "data/aliases.json.br"))
+const aliasData = await loadJsonBr(path.join(process.cwd(), "data/aliases.json.br"));
 
 // load additional food centric words
-const wordData = await loadJsonBr(path.join(process.cwd(), "data/words.json.br"))
+const wordData = await loadJsonBr(path.join(process.cwd(), "data/words.json.br"));
 
 // add to NLP for slighly better processing
 nlp.addWords(wordData);
 
 async function loadJsonBr(file: string) {
-  const chunks: Buffer[]  = [];
+  const chunks: Buffer[] = [];
 
   // pipe stream into decompressor and output chunks
-  await pipeline(
-    createReadStream(file),
-    createBrotliDecompress(),
-    async function* (stream) {
-      for await (const chunk of stream) {
-        chunks.push(chunk);
-        yield
-      }
+  await pipeline(createReadStream(file), createBrotliDecompress(), async function* (stream) {
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      yield;
     }
-  )
+  });
 
-  const buffer = Buffer.concat(chunks).toString()
-  return JSON.parse(buffer)
+  // merge chunks and parse into JSON
+  const buffer = Buffer.concat(chunks).toString();
+  return JSON.parse(buffer);
 }
 
+// smash input: User Input => userinput
 function smashed_case(item: NFKDSanitizedItem): NFKDSanitizedItem {
   // Remove all remaining whitespace
   const whitespace = /\s/g;
   return item.toLocaleLowerCase().replaceAll(whitespace, "");
 }
 
-
-function sanitize(item: string): NFKDSanitizedItem {
+// Perform NFKD and basic trimming
+export function sanitize(item: string): NFKDSanitizedItem {
   return item.normalize("NFKD").trim();
 }
 
+// Process sanitized string through NLP and alias table
 function nlpProcess(item: string): NLPProcessedItem {
   // processing performs as much NLP-based normalization as possible
   // depluralization, deconstructing adjectives and verbs, etc
@@ -60,12 +66,13 @@ function nlpProcess(item: string): NLPProcessedItem {
   const aliased = aliasData[key];
 
   if (aliased) {
-    return aliased
+    return aliased;
   }
 
-  return item
+  return item;
 }
 
+// Canonicalize processed name back into user friendly format
 function canonical(item: NLPProcessedItem): CanonicalName {
   // Resolves issues with characters mapping to an intermediary that were missed during the NFKC processing
   const lowercase: string = item.toLocaleLowerCase();

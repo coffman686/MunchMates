@@ -1,6 +1,6 @@
-import { redis, ensureRedisConnected, isRedisReady } from "@/lib/redis";
 import { type NextProxy, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/apiErrors";
+import { ensureRedisConnected, isRedisReady, redis } from "@/lib/redis";
 import { verifyBearer } from "@/lib/verifyToken";
 
 // Fixed window rate limiter: 100 requests per 10 seconds per IP
@@ -39,7 +39,7 @@ async function rateLimiter(ip: string, limit = 100, windowSec = 10) {
   }
 }
 
-export const proxy: NextProxy = async (req, event) => {
+export const proxy: NextProxy = async (req, _event) => {
   // Rate limiting by IP address
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "anonymous";
   const { success, limit, remaining, reset } = await rateLimiter(ip);
@@ -51,7 +51,7 @@ export const proxy: NextProxy = async (req, event) => {
   try {
     // Throws if missing/invalid
     await verifyBearer(authHeader ?? undefined);
-  } catch (err) {
+  } catch (_err) {
     return errorResponse(401, "Unauthorized");
   }
   const res = NextResponse.next();
@@ -59,9 +59,9 @@ export const proxy: NextProxy = async (req, event) => {
   res.headers.set("X-RateLimit-Remaining", remaining.toString());
   res.headers.set("X-RateLimit-Reset", reset.toString());
   return res;
-}
+};
 
 export const config = {
   // matches everything under /api/
   matcher: "/api/:path*",
-}
+};

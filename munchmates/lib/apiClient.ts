@@ -31,76 +31,84 @@ Known Faults: None
 */
 
 import type { ApiErrorCode } from "@/lib/types/api";
+
 export type { ApiErrorCode };
 
-export class ApiClientError extends Error { // Typed error wrapper consumed by frontend flows
-    status: number;
-    code: ApiErrorCode;
+export class ApiClientError extends Error {
+  // Typed error wrapper consumed by frontend flows
+  status: number;
+  code: ApiErrorCode;
 
-    constructor(message: string, status: number, code: ApiErrorCode) {
-        super(message);
-        this.name = "ApiClientError";
-        this.status = status;
-        this.code = code;
-    }
+  constructor(message: string, status: number, code: ApiErrorCode) {
+    super(message);
+    this.name = "ApiClientError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
-function parseLegacyError(payload: unknown): string | null { // Support older payload format
-    if (!payload || typeof payload !== "object") return null;
+function parseLegacyError(payload: unknown): string | null {
+  // Support older payload format
+  if (!payload || typeof payload !== "object") return null;
 
-    const value = (payload as { error?: unknown }).error;
-    if (typeof value === "string") return value;
+  const value = (payload as { error?: unknown }).error;
+  if (typeof value === "string") return value;
 
-    return null;
+  return null;
 }
 
-export async function toApiClientError( // Convert failed fetch response into ApiClientError
-    response: Response,
-    fallbackMessage = "Request failed"
+export async function toApiClientError(
+  // Convert failed fetch response into ApiClientError
+  response: Response,
+  fallbackMessage = "Request failed",
 ): Promise<ApiClientError> {
-    let status = response.status || 500;
-    let code: ApiErrorCode = "UNKNOWN_ERROR";
-    let message = fallbackMessage;
+  let status = response.status || 500;
+  let code: ApiErrorCode = "UNKNOWN_ERROR";
+  let message = fallbackMessage;
 
-    try { // Attempt JSON body parsing
-        const body = (await response.json()) as {
-            error?: { status?: number; code?: ApiErrorCode; message?: string };
-        };
+  try {
+    // Attempt JSON body parsing
+    const body = (await response.json()) as {
+      error?: { status?: number; code?: ApiErrorCode; message?: string };
+    };
 
-        if (body?.error && typeof body.error === "object") {
-            status = typeof body.error.status === "number" ? body.error.status : status;
-            code = typeof body.error.code === "string" ? body.error.code : code;
-            message = typeof body.error.message === "string" ? body.error.message : message;
-        } else {
-            const legacyError = parseLegacyError(body);
-            if (legacyError) {
-                message = legacyError;
-            }
-        }
-    } catch {
-        // Non-JSON responses intentionally fall back to defaults
+    if (body?.error && typeof body.error === "object") {
+      status = typeof body.error.status === "number" ? body.error.status : status;
+      code = typeof body.error.code === "string" ? body.error.code : code;
+      message = typeof body.error.message === "string" ? body.error.message : message;
+    } else {
+      const legacyError = parseLegacyError(body);
+      if (legacyError) {
+        message = legacyError;
+      }
     }
+  } catch {
+    // Non-JSON responses intentionally fall back to defaults
+  }
 
-    return new ApiClientError(message, status, code);
+  return new ApiClientError(message, status, code);
 }
 
-export async function assertOk(response: Response, fallbackMessage?: string): Promise<Response> { // Guard helper that throws on non-OK responses
-    if (response.ok) return response;
-    throw await toApiClientError(response, fallbackMessage);
+export async function assertOk(response: Response, fallbackMessage?: string): Promise<Response> {
+  // Guard helper that throws on non-OK responses
+  if (response.ok) return response;
+  throw await toApiClientError(response, fallbackMessage);
 }
 
-export function getErrorMessage(error: unknown, fallbackMessage: string): string { // Extract display-safe message from unknown errors
-    if (error instanceof ApiClientError) {
-        return error.message;
-    }
+export function getErrorMessage(error: unknown, fallbackMessage: string): string {
+  // Extract display-safe message from unknown errors
+  if (error instanceof ApiClientError) {
+    return error.message;
+  }
 
-    if (error instanceof Error && error.message) {
-        return error.message;
-    }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
 
-    return fallbackMessage;
+  return fallbackMessage;
 }
 
-export function isValidationError(error: unknown): boolean { // Predicate for validation-specific UI states
-    return error instanceof ApiClientError && error.code === "VALIDATION_ERROR";
+export function isValidationError(error: unknown): boolean {
+  // Predicate for validation-specific UI states
+  return error instanceof ApiClientError && error.code === "VALIDATION_ERROR";
 }

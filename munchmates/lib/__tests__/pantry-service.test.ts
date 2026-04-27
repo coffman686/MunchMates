@@ -1,12 +1,14 @@
+// lib/__tests__/pantry-service.tests.ts
+// test all pantry related functions with mocked db calls
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addPantryItem,
   deletePantryItem,
   formatPantryItemResponse,
   matchPantryIngredients,
-  PantryServiceError,
-  sanitizePantryQuantity,
   type PantryItemRecord,
+  sanitizePantryQuantity,
   updatePantryItem,
 } from "../pantry-service";
 
@@ -43,9 +45,7 @@ function createRepo() {
 
 describe("pantry-service quantity sanitization", () => {
   it("builds a quantity string from structured input", () => {
-    expect(
-      sanitizePantryQuantity({ amount: 2, unit: "cups" }, { requireQuantity: true }),
-    ).toEqual({
+    expect(sanitizePantryQuantity({ amount: 2, unit: "cups" }, { requireQuantity: true })).toEqual({
       quantity: "2 cups",
       amount: 2,
       unit: "cups",
@@ -55,11 +55,11 @@ describe("pantry-service quantity sanitization", () => {
   it("rejects zero and negative amounts", () => {
     expect(() =>
       sanitizePantryQuantity({ amount: 0, unit: "cups" }, { requireQuantity: true }),
-    ).toThrowError("Amount must be a positive number");
+    ).toThrow("Amount must be a positive number");
 
-    expect(() =>
-      sanitizePantryQuantity({ quantity: "0 cups" }, { requireQuantity: true }),
-    ).toThrowError("Amount must be a positive number");
+    expect(() => sanitizePantryQuantity({ quantity: "0 cups" }, { requireQuantity: true })).toThrow(
+      "Amount must be a positive number",
+    );
   });
 });
 
@@ -70,7 +70,13 @@ describe("pantry-service add and update", () => {
 
   it("creates a new pantry item when no duplicate exists", async () => {
     const repo = createRepo();
-    const createdItem = createPantryItem({ name: "Milk", canonName: "milk", quantity: "2 cups", amount: 2, unit: "cups" });
+    const createdItem = createPantryItem({
+      name: "Milk",
+      canonName: "milk",
+      quantity: "2 cups",
+      amount: 2,
+      unit: "cups",
+    });
 
     repo.pantryItem.findFirst.mockResolvedValue(null);
     repo.pantryItem.create.mockResolvedValue(createdItem);
@@ -99,8 +105,17 @@ describe("pantry-service add and update", () => {
 
   it("updates an existing pantry item when a duplicate canonical name is added", async () => {
     const repo = createRepo();
-    const existing = createPantryItem({ id: 7, name: "Eggs", canonName: "egg" });
-    const updated = createPantryItem({ id: 7, quantity: "18", amount: 18, category: "Protein" });
+    const existing = createPantryItem({
+      id: 7,
+      name: "Eggs",
+      canonName: "egg",
+    });
+    const updated = createPantryItem({
+      id: 7,
+      quantity: "18",
+      amount: 18,
+      category: "Protein",
+    });
 
     repo.pantryItem.findFirst.mockResolvedValue(existing);
     repo.pantryItem.update.mockResolvedValue(updated);
@@ -127,8 +142,21 @@ describe("pantry-service add and update", () => {
 
   it("updates only the supplied fields for an existing pantry item", async () => {
     const repo = createRepo();
-    const existing = createPantryItem({ id: 3, name: "Flour", canonName: "flour", quantity: "1 lb", amount: 1, unit: "lb", category: "Baking" });
-    const updated = createPantryItem({ id: 3, name: "Bread Flour", canonName: "bread flour", category: "Pantry" });
+    const existing = createPantryItem({
+      id: 3,
+      name: "Flour",
+      canonName: "flour",
+      quantity: "1 lb",
+      amount: 1,
+      unit: "lb",
+      category: "Baking",
+    });
+    const updated = createPantryItem({
+      id: 3,
+      name: "Bread Flour",
+      canonName: "bread flour",
+      category: "Pantry",
+    });
 
     repo.pantryItem.findFirst.mockResolvedValue(existing);
     repo.pantryItem.update.mockResolvedValue(updated);
@@ -188,7 +216,14 @@ describe("pantry-service delete", () => {
 describe("pantry-service matching", () => {
   it("matches compatible volume units and marks insufficient pantry amounts as partial", () => {
     const pantryItems = [
-      createPantryItem({ id: 1, name: "Milk", canonName: "milk", quantity: "1 cup", amount: 1, unit: "cup" }),
+      createPantryItem({
+        id: 1,
+        name: "Milk",
+        canonName: "milk",
+        quantity: "1 cup",
+        amount: 1,
+        unit: "cup",
+      }),
     ];
 
     const matches = matchPantryIngredients(pantryItems, [
@@ -206,8 +241,22 @@ describe("pantry-service matching", () => {
 
   it("uses fuzzy matching for descriptive ingredient names without false generic-word matches", () => {
     const pantryItems = [
-      createPantryItem({ id: 2, name: "Olive Oil", canonName: "olive oil", quantity: "1 bottle", amount: 1, unit: "item" }),
-      createPantryItem({ id: 3, name: "Cream", canonName: "cream", quantity: "1 cup", amount: 1, unit: "cup" }),
+      createPantryItem({
+        id: 2,
+        name: "Olive Oil",
+        canonName: "olive oil",
+        quantity: "1 bottle",
+        amount: 1,
+        unit: "item",
+      }),
+      createPantryItem({
+        id: 3,
+        name: "Cream",
+        canonName: "cream",
+        quantity: "1 cup",
+        amount: 1,
+        unit: "cup",
+      }),
     ];
 
     const matches = matchPantryIngredients(pantryItems, [
@@ -227,7 +276,14 @@ describe("pantry-service matching", () => {
 
   it("supports count conversions like dozen to individual items", () => {
     const pantryItems = [
-      createPantryItem({ id: 5, name: "Eggs", canonName: "egg", quantity: "1 dozen", amount: 1, unit: "dozen" }),
+      createPantryItem({
+        id: 5,
+        name: "Eggs",
+        canonName: "egg",
+        quantity: "1 dozen",
+        amount: 1,
+        unit: "dozen",
+      }),
     ];
 
     const matches = matchPantryIngredients(pantryItems, [

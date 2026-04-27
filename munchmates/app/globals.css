@@ -5,8 +5,8 @@
 
 /* Font faces for Momo Trust Display */
 @font-face {
-  font-family: 'Momo Trust Display';
-  src: url('/font/MomoTrustDisplay-Regular.ttf') format('truetype');
+  font-family: "Momo Trust Display";
+  src: url("/font/MomoTrustDisplay-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -18,16 +18,16 @@
    Fallback declarations that reuse the Regular file when Bold/Italic files are
    missing. Replace or remove these when you add true Bold/Italic fonts. */
 @font-face {
-  font-family: 'Momo Trust Display';
-  src: url('/font/MomoTrustDisplay-Regular.ttf') format('truetype');
+  font-family: "Momo Trust Display";
+  src: url("/font/MomoTrustDisplay-Regular.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Momo Trust Display';
-  src: url('/font/MomoTrustDisplay-Regular.ttf') format('truetype');
+  font-family: "Momo Trust Display";
+  src: url("/font/MomoTrustDisplay-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -46,9 +46,10 @@
   --radius-xl: calc(var(--radius) + 0.25rem);
 
   /* Font families */
-  --font-heading: 'Momo Trust Display', serif;
-  --font-body: 'Noto Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Source Code Pro", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
+  --font-heading: "Momo Trust Display", serif;
+  --font-body: "Noto Sans", system-ui, -apple-system, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Source Code Pro", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
 
   /* Light theme - HSL for better theming control */
   --background: 25 40% 96%;
@@ -150,7 +151,7 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  
+
   /* Sidebar colors */
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
@@ -160,18 +161,18 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
-  
+
   /* Chart colors */
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
   --color-chart-4: hsl(var(--chart-4));
   --color-chart-5: hsl(var(--chart-5));
-  
+
   /* Font families */
   --font-sans: var(--font-body);
   --font-mono: var(--font-mono);
-  
+
   /* Border radius */
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -184,7 +185,7 @@
   * {
     @apply border-border;
   }
-  
+
   *:focus-visible {
     @apply outline-2 outline-ring/50 outline-offset-2;
   }
@@ -196,10 +197,17 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-body);
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-heading);
     font-weight: 600;
     line-height: 1.25;
@@ -247,7 +255,7 @@
   .focus-ring {
     @apply focus:outline-none focus-visible:outline-2 focus-visible:outline-ring/50 focus-visible:outline-offset-2;
   }
-  
+
   /* Glass morphism effect */
   .glass {
     @apply bg-background/80 backdrop-blur-md border border-border/50;
@@ -261,16 +269,16 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
-  
+
   /* Text balance for better typography */
   .text-balance {
     text-wrap: balance;
   }
-  
+
   /* Reduced motion support */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -284,10 +292,12 @@
   }
   /* Print styles */
   @media print {
-  html, body, #__next {
-    min-height: auto !important;
-    height: auto !important;
-    overflow: visible !important;
+    html,
+    body,
+    #__next {
+      min-height: auto !important;
+      height: auto !important;
+      overflow: visible !important;
     }
   }
   @media print {
@@ -297,7 +307,7 @@
     }
   }
   .main-layout {
-  min-height: 80vh;
-  padding: 1rem;
-}
+    min-height: 80vh;
+    padding: 1rem;
+  }
 }

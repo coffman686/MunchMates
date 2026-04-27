@@ -4,12 +4,13 @@
 // - Update serving count for a recipe
 // - Allows deletion of recipe
 
-'use client';
+"use client";
 
-import { useDraggable } from '@dnd-kit/core';
-import { useRouter } from 'next/navigation';
-import { MealPlanEntry } from '@/lib/types/meal-plan';
-import { GripVertical, X, Minus, Plus, Users, Clock } from 'lucide-react';
+import { useDraggable } from "@dnd-kit/core";
+import { Clock, GripVertical, Minus, Plus, Users, X } from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import type { MealPlanEntry } from "@/lib/types/meal-plan";
 
 interface DraggableRecipeCardProps {
   entry: MealPlanEntry;
@@ -40,11 +41,10 @@ export default function DraggableRecipeCard({
     <div
       ref={setNodeRef}
       style={style}
-      onClick={() => router.push(`/recipes/${entry.recipeId}`)}
-      className={`group relative flex items-center gap-2.5 rounded-xl p-2 cursor-pointer transition-all ${
+      className={`group relative flex items-center gap-2.5 rounded-xl p-2 transition-all ${
         isDragging
-          ? 'shadow-xl opacity-90 z-50 bg-card ring-2 ring-primary/30'
-          : 'bg-card shadow-[0_1px_4px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] border border-border/50'
+          ? "shadow-xl opacity-90 z-50 bg-card ring-2 ring-primary/30"
+          : "bg-card shadow-[0_1px_4px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] border border-border/50"
       }`}
     >
       {/* Drag handle */}
@@ -60,11 +60,15 @@ export default function DraggableRecipeCard({
 
       {/* Thumbnail */}
       {entry.image ? (
-        <img
-          src={entry.image}
-          alt={entry.title}
-          className="w-20 h-20 rounded-lg object-cover flex-shrink-0 shadow-sm"
-        />
+        <div className="relative w-20 h-20 rounded-lg object-cover flex-shrink-0 shadow-sm hover:shadow">
+          <Image
+            src={entry.image}
+            alt={entry.title}
+            fill
+            className="cursor-pointer hover:scale-[1.05] hover:brightness-80"
+            onClick={() => router.push(`/recipes/${entry.recipeId}`)}
+          />
+        </div>
       ) : (
         <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-orange-100 to-amber-50 flex items-center justify-center flex-shrink-0">
           <span className="text-xl">🍽️</span>
@@ -73,11 +77,18 @@ export default function DraggableRecipeCard({
 
       {/* Title + stats */}
       <div className="flex-1 min-w-0 py-0.5">
-        <p className="text-[13px] font-semibold text-foreground truncate leading-tight">{entry.title}</p>
+        <button
+          type="button"
+          className="w-full text-[13px] font-semibold text-foreground truncate leading-tight cursor-pointer hover:scale-[1.05] hover:underline"
+          onClick={() => router.push(`/recipes/${entry.recipeId}`)}
+        >
+          {entry.title}
+        </button>
         <div className="flex items-center gap-2 mt-1.5">
           {onUpdateServings && (
             <div className="flex items-center gap-0.5">
               <button
+                type="button"
                 className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -87,11 +98,14 @@ export default function DraggableRecipeCard({
               >
                 <Minus className="h-3 w-3" />
               </button>
-              <span className={`text-xs flex items-center gap-0.5 tabular-nums px-0.5 ${isScaled ? 'text-primary font-bold' : 'text-muted-foreground font-medium'}`}>
+              <span
+                className={`text-xs flex items-center gap-0.5 tabular-nums px-0.5 ${isScaled ? "text-primary font-bold" : "text-muted-foreground font-medium"}`}
+              >
                 <Users className="h-3 w-3" />
                 {entry.servings}
               </span>
               <button
+                type="button"
                 className="h-5 w-5 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -113,8 +127,12 @@ export default function DraggableRecipeCard({
 
       {/* Remove button */}
       <button
+        type="button"
         className="h-6 w-6 flex items-center justify-center rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
         aria-label="Remove recipe"
       >
         <X className="h-3 w-3" />

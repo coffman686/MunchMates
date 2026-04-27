@@ -1,10 +1,10 @@
 // lib/fonts.ts
 // Use Noto Sans font
 
-import { Noto_Sans } from 'next/font/google'
+import { Noto_Sans } from "next/font/google";
 
 export const notoSans = Noto_Sans({
-  subsets: ['latin'],
-  variable: '--font-body',
-  display: 'swap',
-})
+  subsets: ["latin"],
+  variable: "--font-body",
+  display: "swap",
+});

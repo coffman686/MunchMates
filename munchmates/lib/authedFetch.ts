@@ -5,32 +5,32 @@
 // - Automatically refreshes near-expiry tokens via `ensureToken`
 // - Falls back gracefully with a console warning when unauthenticated
 
-'use client';
-import { ensureToken, waitForInit, keycloak } from '@/lib/keycloak';
+"use client";
+import { ensureToken, keycloak, waitForInit } from "@/lib/keycloak";
 
 export async function authedFetch(input: RequestInfo, init: RequestInit = {}) {
-    const headers = new Headers(init.headers || {});
-    const hasBody = init.body !== undefined && init.body !== null;
-    const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
-    if (hasBody && !isFormData && !headers.has('Content-Type')) {
-        headers.set('Content-Type', 'application/json');
-    }
+  const headers = new Headers(init.headers || {});
+  const hasBody = init.body !== undefined && init.body !== null;
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
-    // Wait for Keycloak init to fully settle (never triggers init itself)
-    await waitForInit();
+  // Wait for Keycloak init to fully settle (never triggers init itself)
+  await waitForInit();
 
-    // validate authentication
-    if (keycloak.authenticated) {
-        // add token if available
-        const token = await ensureToken();
-        if (token) {
-            headers.set('Authorization', `Bearer ${token}`);
-        } else {
-            console.warn('authedFetch: Keycloak authenticated but no token available');
-        }
+  // validate authentication
+  if (keycloak.authenticated) {
+    // add token if available
+    const token = await ensureToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
     } else {
-        console.warn('authedFetch: Keycloak not authenticated');
+      console.warn("authedFetch: Keycloak authenticated but no token available");
     }
+  } else {
+    console.warn("authedFetch: Keycloak not authenticated");
+  }
 
-    return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers });
 }

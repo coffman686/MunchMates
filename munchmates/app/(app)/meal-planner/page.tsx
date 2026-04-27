@@ -13,10 +13,11 @@
 // - Per-entry servings control, preserving original servings for later scaling logic
 // - "Save Plan" persists the current week to both localStorage and the `/api/meal-plan` endpoint
 // - "Generate Grocery List" aggregates ingredients via `aggregateIngredients(weekPlan)`,
+// - Daily nutrition progress featuring calorie and macro tracking
 
-'use client';
+"use client";
 
-import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent } from '@dnd-kit/core';
+import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent } from "@dnd-kit/core";
 import {
   Check,
   ChevronDown,
@@ -29,28 +30,28 @@ import {
   ShoppingCart,
   Sparkles,
   Utensils,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import AppSidebar from '@/components/layout/app-sidebar';
-import DraggableRecipeCard from '@/components/meal-planner/DraggableRecipeCard';
-import MealSlot from '@/components/meal-planner/MealSlot';
-import RecipePickerDialog from '@/components/meal-planner/RecipePickerDialog';
-import RequireAuth from '@/components/RequireAuth';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import AppSidebar from "@/components/layout/app-sidebar";
+import DraggableRecipeCard from "@/components/meal-planner/DraggableRecipeCard";
+import MealSlot from "@/components/meal-planner/MealSlot";
+import RecipePickerDialog from "@/components/meal-planner/RecipePickerDialog";
+import RequireAuth from "@/components/RequireAuth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import { aggregateIngredients } from '@/lib/ingredient-aggregator';
-import { ensureToken } from '@/lib/keycloak';
-import { authedFetch } from '@/lib/authedFetch';
-import { ensureDietaryPrefsLoaded, getDietaryPrefs } from '@/lib/dietary-prefs';
+} from "@/components/ui/select";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { authedFetch } from "@/lib/authedFetch";
+import { ensureDietaryPrefsLoaded } from "@/lib/dietary-prefs";
+import { aggregateIngredients } from "@/lib/ingredient-aggregator";
+import { ensureToken } from "@/lib/keycloak";
 import {
   createEmptyWeekPlan,
   type DayPlan,
@@ -61,27 +62,53 @@ import {
   type NutritionDaySummary,
   type NutritionMetricProgress,
   type WeeklyMealPlan,
-} from '@/lib/types/meal-plan';
+} from "@/lib/types/meal-plan";
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner'];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MEALS: MealType[] = ["breakfast", "lunch", "dinner"];
 
 const MEAL_ICONS = {
-  breakfast: { icon: Coffee, color: '#FF9F0A', bg: 'bg-[#FF9F0A]/10' },
-  lunch: { icon: Utensils, color: '#30D158', bg: 'bg-[#30D158]/10' },
-  dinner: { icon: Moon, color: '#5E5CE6', bg: 'bg-[#5E5CE6]/10' },
+  breakfast: { icon: Coffee, color: "#FF9F0A", bg: "bg-[#FF9F0A]/10" },
+  lunch: { icon: Utensils, color: "#30D158", bg: "bg-[#30D158]/10" },
+  dinner: { icon: Moon, color: "#5E5CE6", bg: "bg-[#5E5CE6]/10" },
 };
 
 const DIET_OPTIONS = [
-  '', 'Gluten Free', 'Ketogenic', 'Vegetarian', 'Lacto-Vegetarian',
-  'Ovo-Vegetarian', 'Vegan', 'Pescetarian', 'Paleo', 'Primal',
-  'Low FODMAP', 'Whole30',
+  "",
+  "Gluten Free",
+  "Ketogenic",
+  "Vegetarian",
+  "Lacto-Vegetarian",
+  "Ovo-Vegetarian",
+  "Vegan",
+  "Pescetarian",
+  "Paleo",
+  "Primal",
+  "Low FODMAP",
+  "Whole30",
 ];
 
 function clampPercent(value: number | null): number {
   if (value === null || Number.isNaN(value)) return 0;
   return Math.max(0, Math.min(value, 100));
 }
+
+const formatLocalDateStr = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getWeekRange = (date: Date) => {
+  const start = getWeekMonday(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    start: start.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    end: end.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+  };
+};
 
 const MealPlanner = () => {
   const router = useRouter();
@@ -92,20 +119,22 @@ const MealPlanner = () => {
   const [isGeneratingGrocery, setIsGeneratingGrocery] = useState(false);
 
   // autosave state
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const weekPlanRef = useRef<WeeklyMealPlan | null>(null);
   const isInitialLoadRef = useRef(true);
 
   // generate preferences dropdown
   const [showGenPrefs, setShowGenPrefs] = useState(false);
-  const [genCalories, setGenCalories] = useState('2000');
-  const [genDiet, setGenDiet] = useState('');
-  const [genExclude, setGenExclude] = useState('');
+  const [genCalories, setGenCalories] = useState("2000");
+  const [genDiet, setGenDiet] = useState("");
+  const [genExclude, setGenExclude] = useState("");
 
   // recipe picker state
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<{ dayDate: string; mealType: MealType } | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ dayDate: string; mealType: MealType } | null>(
+    null,
+  );
 
   // drag-and-drop state
   const [activeDragEntry, setActiveDragEntry] = useState<MealPlanEntry | null>(null);
@@ -125,26 +154,8 @@ const MealPlanner = () => {
     });
   }, []);
 
-  const formatLocalDateStr = (d: Date): string => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   const weekMonday = getWeekMonday(currentDate);
   const weekStartStr = formatLocalDateStr(weekMonday);
-
-  const getWeekRange = (date: Date) => {
-    const start = getWeekMonday(date);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    return {
-      start: start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      end: end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-    };
-  };
-
   const weekRange = getWeekRange(currentDate);
 
   const isCurrentWeek = (() => {
@@ -154,23 +165,25 @@ const MealPlanner = () => {
   })();
 
   const doSave = useCallback(async (plan: WeeklyMealPlan) => {
-    setSaveStatus('saving');
+    setSaveStatus("saving");
     try {
       const localKey = `mealPlan-${plan.weekStart}`;
       localStorage.setItem(localKey, JSON.stringify(plan));
 
       const token = await ensureToken();
       if (token) {
-        const saveRes = await authedFetch('/api/meal-plan', {
-          method: 'POST',
+        const saveRes = await authedFetch("/api/meal-plan", {
+          method: "POST",
           body: JSON.stringify({ plan }),
         });
 
         if (!saveRes.ok) {
-          throw new Error('Failed to save meal plan');
+          throw new Error("Failed to save meal plan");
         }
 
-        const nutritionRes = await authedFetch(`/api/meal-plan/nutrition-summary?weekStart=${plan.weekStart}`);
+        const nutritionRes = await authedFetch(
+          `/api/meal-plan/nutrition-summary?weekStart=${plan.weekStart}`,
+        );
 
         if (nutritionRes.ok) {
           const nutritionData = await nutritionRes.json();
@@ -187,10 +200,10 @@ const MealPlanner = () => {
         }
       }
 
-      setSaveStatus('saved');
+      setSaveStatus("saved");
     } catch (error) {
-      console.error('Failed to save meal plan:', error);
-      setSaveStatus('idle');
+      console.error("Failed to save meal plan:", error);
+      setSaveStatus("idle");
     }
   }, []);
 
@@ -220,12 +233,12 @@ const MealPlanner = () => {
         if (localData) {
           setWeekPlan(JSON.parse(localData));
         } else {
-          const monday = new Date(weekStartStr + 'T00:00:00');
+          const monday = new Date(`${weekStartStr}T00:00:00`);
           setWeekPlan(createEmptyWeekPlan(monday));
         }
       } catch (error) {
-        console.error('Failed to load meal plan:', error);
-        const monday = new Date(weekStartStr + 'T00:00:00');
+        console.error("Failed to load meal plan:", error);
+        const monday = new Date(`${weekStartStr}T00:00:00`);
         setWeekPlan(createEmptyWeekPlan(monday));
       } finally {
         setIsLoading(false);
@@ -352,7 +365,7 @@ const MealPlanner = () => {
 
   const handleSelectRecipe = (
     recipe: { id: number; title: string; image: string; servings: number; readyInMinutes?: number },
-    selectedDays: string[]
+    selectedDays: string[],
   ) => {
     if (!selectedSlot || !weekPlan) return;
     const newDays = weekPlan.days.map((day) => {
@@ -389,7 +402,7 @@ const MealPlanner = () => {
     if (!weekPlan) return [];
     return weekPlan.days.map((day) => ({
       date: day.date,
-      label: new Date(day.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      label: new Date(day.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
     }));
   };
 
@@ -431,7 +444,7 @@ const MealPlanner = () => {
     const targetEntry = getEntry(targetData.dayDate, targetData.mealType);
     const newDays = weekPlan.days.map((day) => {
       const updated: DayPlan = { ...day };
-      if (day.date === sourceDayDate) updated[sourceMealType!] = targetEntry;
+      if (day.date === sourceDayDate) updated[sourceMealType] = targetEntry;
       if (day.date === targetData.dayDate) updated[targetData.mealType] = sourceEntry;
       return updated;
     });
@@ -444,42 +457,55 @@ const MealPlanner = () => {
     setIsGenerating(true);
     setShowGenPrefs(false);
     try {
-      const params = new URLSearchParams({ timeFrame: 'week' });
-      if (genCalories) params.set('targetCalories', genCalories);
-      if (genDiet && genDiet !== '__none') params.set('diet', genDiet);
-      if (genExclude) params.set('exclude', genExclude);
+      const params = new URLSearchParams({ timeFrame: "week" });
+      if (genCalories) params.set("targetCalories", genCalories);
+      if (genDiet && genDiet !== "__none") params.set("diet", genDiet);
+      if (genExclude) params.set("exclude", genExclude);
 
       const res = await authedFetch(`/api/spoonacular/recipes/generateMealPlan?${params}`);
-      if (!res.ok) throw new Error('Failed to generate meal plan');
+      if (!res.ok) throw new Error("Failed to generate meal plan");
       const data = await res.json();
 
-      const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-      const mealSlots: MealType[] = ['breakfast', 'lunch', 'dinner'];
+      const dayNames = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ];
+      const mealSlots: MealType[] = ["breakfast", "lunch", "dinner"];
 
       const newDays = weekPlan.days.map((day, idx) => {
         const spoonDay = data.week?.[dayNames[idx]];
         if (!spoonDay?.meals) return day;
 
         const updated: DayPlan = { ...day };
-        spoonDay.meals.forEach((meal: { id: number; title: string; servings: number; readyInMinutes?: number }, mealIdx: number) => {
-          if (mealIdx < 3) {
-            updated[mealSlots[mealIdx]] = {
-              id: generateMealEntryId(),
-              recipeId: meal.id,
-              title: meal.title,
-              image: `https://img.spoonacular.com/recipes/${meal.id}-312x231.jpg`,
-              servings: meal.servings || 1,
-              originalServings: meal.servings || 1,
-              readyInMinutes: meal.readyInMinutes,
-            };
-          }
-        });
+        spoonDay.meals.forEach(
+          (
+            meal: { id: number; title: string; servings: number; readyInMinutes?: number },
+            mealIdx: number,
+          ) => {
+            if (mealIdx < 3) {
+              updated[mealSlots[mealIdx]] = {
+                id: generateMealEntryId(),
+                recipeId: meal.id,
+                title: meal.title,
+                image: `https://img.spoonacular.com/recipes/${meal.id}-312x231.jpg`,
+                servings: meal.servings || 1,
+                originalServings: meal.servings || 1,
+                readyInMinutes: meal.readyInMinutes,
+              };
+            }
+          },
+        );
         return updated;
       });
 
       setWeekPlan({ ...weekPlan, days: newDays });
     } catch (error) {
-      console.error('Failed to generate meal plan:', error);
+      console.error("Failed to generate meal plan:", error);
     } finally {
       setIsGenerating(false);
     }
@@ -490,10 +516,10 @@ const MealPlanner = () => {
     setIsGeneratingGrocery(true);
     try {
       const aggregated = await aggregateIngredients(weekPlan);
-      localStorage.setItem('pending-grocery-items', JSON.stringify(aggregated));
-      router.push('/grocery-list?fromMealPlan=true');
+      localStorage.setItem("pending-grocery-items", JSON.stringify(aggregated));
+      router.push("/grocery-list?fromMealPlan=true");
     } catch (error) {
-      console.error('Failed to generate grocery list:', error);
+      console.error("Failed to generate grocery list:", error);
     } finally {
       setIsGeneratingGrocery(false);
     }
@@ -501,14 +527,13 @@ const MealPlanner = () => {
 
   const hasRecipes = weekPlan?.days.some((day) => day.breakfast || day.lunch || day.dinner);
 
-  const mealCount = weekPlan?.days.reduce((count, day) => {
-    return count + (day.breakfast ? 1 : 0) + (day.lunch ? 1 : 0) + (day.dinner ? 1 : 0);
-  }, 0) ?? 0;
+  const mealCount =
+    weekPlan?.days.reduce((count, day) => {
+      return count + (day.breakfast ? 1 : 0) + (day.lunch ? 1 : 0) + (day.dinner ? 1 : 0);
+    }, 0) ?? 0;
 
   const selectedNutritionDay =
-      nutritionDays.find((day) => day.date === selectedNutritionDate) ??
-      nutritionDays[0] ??
-      null;
+    nutritionDays.find((day) => day.date === selectedNutritionDate) ?? nutritionDays[0] ?? null;
 
   //Helper for nutrition info
   const renderProgressLabel = (metric: NutritionMetricProgress, unit = "") => {
@@ -542,7 +567,7 @@ const MealPlanner = () => {
                       className="rounded-2xl px-4 sm:px-6 py-4 shadow-sm"
                       style={{
                         background:
-                          'linear-gradient(135deg, hsl(14 80% 52% / 0.22) 0%, hsl(30 90% 55% / 0.15) 50%, hsl(350 70% 60% / 0.10) 100%)',
+                          "linear-gradient(135deg, hsl(14 80% 52% / 0.22) 0%, hsl(30 90% 55% / 0.15) 50%, hsl(350 70% 60% / 0.10) 100%)",
                       }}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -563,6 +588,7 @@ const MealPlanner = () => {
                             </h2>
                             {!isCurrentWeek && (
                               <button
+                                type="button"
                                 onClick={goToToday}
                                 className="text-xs font-medium text-primary bg-primary/10 px-2.5 py-0.5 rounded-full hover:bg-primary/20 transition-colors mt-0.5"
                               >
@@ -584,12 +610,12 @@ const MealPlanner = () => {
                         {/* Right: action buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {/* Save status */}
-                          {saveStatus === 'saving' && (
+                          {saveStatus === "saving" && (
                             <span className="text-xs text-foreground/60 flex items-center gap-1 whitespace-nowrap">
                               <Loader2 className="h-3 w-3 animate-spin" /> Saving...
                             </span>
                           )}
-                          {saveStatus === 'saved' && (
+                          {saveStatus === "saved" && (
                             <span className="text-xs text-foreground/60 flex items-center gap-1 whitespace-nowrap">
                               <Check className="h-3 w-3" /> Saved
                             </span>
@@ -617,11 +643,13 @@ const MealPlanner = () => {
                           <div className="relative">
                             <div className="flex rounded-full overflow-hidden shadow-md">
                               <button
+                                type="button"
                                 onClick={handleGenerateMealPlan}
                                 disabled={isGenerating}
                                 className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 whitespace-nowrap"
                                 style={{
-                                  background: 'linear-gradient(135deg, hsl(14 80% 50%) 0%, hsl(30 90% 52%) 100%)',
+                                  background:
+                                    "linear-gradient(135deg, hsl(14 80% 50%) 0%, hsl(30 90% 52%) 100%)",
                                 }}
                               >
                                 {isGenerating ? (
@@ -633,13 +661,17 @@ const MealPlanner = () => {
                                 <span className="sm:hidden">Generate</span>
                               </button>
                               <button
+                                type="button"
                                 onClick={() => setShowGenPrefs(!showGenPrefs)}
                                 className="px-2.5 py-2 text-white border-l border-white/25"
                                 style={{
-                                  background: 'linear-gradient(135deg, hsl(14 80% 50%) 0%, hsl(30 90% 52%) 100%)',
+                                  background:
+                                    "linear-gradient(135deg, hsl(14 80% 50%) 0%, hsl(30 90% 52%) 100%)",
                                 }}
                               >
-                                <ChevronDown className={`h-4 w-4 transition-transform ${showGenPrefs ? 'rotate-180' : ''}`} />
+                                <ChevronDown
+                                  className={`h-4 w-4 transition-transform ${showGenPrefs ? "rotate-180" : ""}`}
+                                />
                               </button>
                             </div>
 
@@ -647,10 +679,14 @@ const MealPlanner = () => {
                             {showGenPrefs && (
                               <div className="absolute right-0 top-full mt-2 w-72 bg-card border rounded-2xl shadow-xl p-4 z-[100] space-y-3">
                                 <div>
-                                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                                  <label
+                                    htmlFor="calorie-input"
+                                    className="text-xs font-medium text-muted-foreground mb-1 block"
+                                  >
                                     Daily Calories
                                   </label>
                                   <Input
+                                    id="calorie-input"
                                     type="number"
                                     value={genCalories}
                                     onChange={(e) => setGenCalories(e.target.value)}
@@ -659,27 +695,34 @@ const MealPlanner = () => {
                                   />
                                 </div>
                                 <div>
-                                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                                  <label
+                                    htmlFor="diet-input"
+                                    className="text-xs font-medium text-muted-foreground mb-1 block"
+                                  >
                                     Diet
                                   </label>
                                   <Select value={genDiet} onValueChange={setGenDiet}>
-                                    <SelectTrigger className="h-8 rounded-lg">
+                                    <SelectTrigger id="diet-input" className="h-8 rounded-lg">
                                       <SelectValue placeholder="Any diet" />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {DIET_OPTIONS.map((diet) => (
-                                        <SelectItem key={diet || '__none'} value={diet || '__none'}>
-                                          {diet || 'Any diet'}
+                                        <SelectItem key={diet || "__none"} value={diet || "__none"}>
+                                          {diet || "Any diet"}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div>
-                                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                                  <label
+                                    htmlFor="exclude-ingredients-input"
+                                    className="text-xs font-medium text-muted-foreground mb-1 block"
+                                  >
                                     Exclude Ingredients
                                   </label>
                                   <Input
+                                    id="exclude-ingredients-input"
                                     value={genExclude}
                                     onChange={(e) => setGenExclude(e.target.value)}
                                     placeholder="e.g. shellfish, olives"
@@ -714,7 +757,8 @@ const MealPlanner = () => {
                                 className="h-full rounded-full transition-all duration-500"
                                 style={{
                                   width: `${(mealCount / 21) * 100}%`,
-                                  background: 'linear-gradient(90deg, hsl(14 80% 50%), hsl(30 90% 52%))',
+                                  background:
+                                    "linear-gradient(90deg, hsl(14 80% 50%), hsl(30 90% 52%))",
                                 }}
                               />
                             </div>
@@ -728,8 +772,7 @@ const MealPlanner = () => {
                   </div>
                   {/* Daily nutrition progress */}
                   <div className="bg-background rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-                    <div
-                        className="px-4 sm:px-5 py-4 border-b border-border/40 flex items-center justify-between gap-3">
+                    <div className="px-4 sm:px-5 py-4 border-b border-border/40 flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-[15px] font-semibold">Daily Nutrition Progress</h3>
                         <p className="text-xs text-muted-foreground mt-1">
@@ -739,55 +782,62 @@ const MealPlanner = () => {
 
                       <div className="flex items-center gap-2">
                         {nutritionDays.length > 0 && (
-                            <div className="w-44">
-                              <Select value={selectedNutritionDate} onValueChange={setSelectedNutritionDate}>
-                                <SelectTrigger className="rounded-xl h-9">
-                                  <SelectValue placeholder="Select day"/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {nutritionDays.map((day) => (
-                                      <SelectItem key={day.date} value={day.date}>
-                                        {new Date(day.date + "T00:00:00").toLocaleDateString(undefined, {
-                                          weekday: "short",
-                                          month: "short",
-                                          day: "numeric",
-                                        })}
-                                      </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                          <div className="w-44">
+                            <Select
+                              value={selectedNutritionDate}
+                              onValueChange={setSelectedNutritionDate}
+                            >
+                              <SelectTrigger className="rounded-xl h-9">
+                                <SelectValue placeholder="Select day" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {nutritionDays.map((day) => (
+                                  <SelectItem key={day.date} value={day.date}>
+                                    {new Date(`${day.date}T00:00:00`).toLocaleDateString(
+                                      undefined,
+                                      {
+                                        weekday: "short",
+                                        month: "short",
+                                        day: "numeric",
+                                      },
+                                    )}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         )}
 
                         {/* Collapse toggle */}
                         <button
-                            onClick={() => setNutritionCollapsed((prev) => !prev)}
-                            className="p-2 rounded-lg hover:bg-muted transition-colors"
+                          type="button"
+                          onClick={() => setNutritionCollapsed((prev) => !prev)}
+                          className="p-2 rounded-lg hover:bg-muted transition-colors"
                         >
                           {nutritionCollapsed ? (
-                              <ChevronDown className="h-4 w-4"/>
+                            <ChevronDown className="h-4 w-4" />
                           ) : (
-                              <ChevronUp className="h-4 w-4"/>
+                            <ChevronUp className="h-4 w-4" />
                           )}
                         </button>
                       </div>
                     </div>
 
                     <div
-                        className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                            nutritionCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100"
-                        }`}
+                      className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                        nutritionCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100"
+                      }`}
                     >
                       <div className="p-4 sm:p-5">
-                      {nutritionLoading ? (
+                        {nutritionLoading ? (
                           <div className="flex items-center justify-center py-6">
-                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/>
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           </div>
-                      ) : !selectedNutritionDay ? (
+                        ) : !selectedNutritionDay ? (
                           <div className="py-4 text-sm text-muted-foreground">
                             Add meals to your planner and save the week to see nutrition progress.
                           </div>
-                      ) : (
+                        ) : (
                           <div className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {[
@@ -816,112 +866,120 @@ const MealPlanner = () => {
                                   metric: selectedNutritionDay.progress.fat,
                                 },
                               ].map((item) => (
-                                  <div
-                                      key={item.label}
-                                      className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3"
-                                  >
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-sm font-semibold">{item.label}</span>
-                                      <span className="text-sm text-muted-foreground">
-                  {item.total}
-                                        {item.unit}
-                                        {item.metric.target !== null ? ` / ${item.metric.target}${item.unit}` : ""}
-                </span>
-                                    </div>
-
-                                    <div className="h-2 rounded-full bg-muted overflow-hidden">
-                                      <div
-                                          className="h-full rounded-full transition-all duration-500"
-                                          style={{
-                                            width: `${clampPercent(item.metric.percent)}%`,
-                                            background:
-                                                item.metric.status === "over"
-                                                    ? "linear-gradient(90deg, hsl(0 84% 60%), hsl(12 90% 60%))"
-                                                    : item.metric.status === "met"
-                                                        ? "linear-gradient(90deg, hsl(142 76% 36%), hsl(160 84% 39%))"
-                                                        : "linear-gradient(90deg, hsl(14 80% 50%), hsl(30 90% 52%))",
-                                          }}
-                                      />
-                                    </div>
-
-                                    <div className="mt-2 flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {renderProgressLabel(item.metric, item.unit)}
-                </span>
-                                      <span className="font-medium text-foreground/70">
-                  {item.metric.percent !== null ? `${item.metric.percent}%` : "No goal"}
-                </span>
-                                    </div>
+                                <div
+                                  key={item.label}
+                                  className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-semibold">{item.label}</span>
+                                    <span className="text-sm text-muted-foreground">
+                                      {item.total}
+                                      {item.unit}
+                                      {item.metric.target !== null
+                                        ? ` / ${item.metric.target}${item.unit}`
+                                        : ""}
+                                    </span>
                                   </div>
+
+                                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all duration-500"
+                                      style={{
+                                        width: `${clampPercent(item.metric.percent)}%`,
+                                        background:
+                                          item.metric.status === "over"
+                                            ? "linear-gradient(90deg, hsl(0 84% 60%), hsl(12 90% 60%))"
+                                            : item.metric.status === "met"
+                                              ? "linear-gradient(90deg, hsl(142 76% 36%), hsl(160 84% 39%))"
+                                              : "linear-gradient(90deg, hsl(14 80% 50%), hsl(30 90% 52%))",
+                                      }}
+                                    />
+                                  </div>
+
+                                  <div className="mt-2 flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">
+                                      {renderProgressLabel(item.metric, item.unit)}
+                                    </span>
+                                    <span className="font-medium text-foreground/70">
+                                      {item.metric.percent !== null
+                                        ? `${item.metric.percent}%`
+                                        : "No goal"}
+                                    </span>
+                                  </div>
+                                </div>
                               ))}
                             </div>
 
                             {selectedNutritionDay.meals.length > 0 && (
-                                <div className="rounded-2xl border border-border/40 bg-background">
-                                  <div className="px-4 py-3 border-b border-border/40">
-                                    <h4 className="text-sm font-semibold">Meal Breakdown</h4>
-                                  </div>
-
-                                  <div className="divide-y divide-border/30">
-                                    {selectedNutritionDay.meals.map((meal) => (
-                                        <div
-                                            key={`${selectedNutritionDay.date}-${meal.mealType}-${meal.recipeId}`}
-                                            className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
-                                        >
-                                          <div>
-                                            <p className="text-sm font-medium capitalize">
-                                              {meal.mealType}: {meal.title}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                              Servings: {meal.servings}
-                                            </p>
-                                          </div>
-
-                                          <div className="text-xs text-muted-foreground sm:text-right">
-                                            <div>{meal.nutrition.calories} cal</div>
-                                            <div>
-                                              P {meal.nutrition.protein}g • C {meal.nutrition.carbs}g •
-                                              F {meal.nutrition.fat}g
-                                            </div>
-                                          </div>
-                                        </div>
-                                    ))}
-                                  </div>
+                              <div className="rounded-2xl border border-border/40 bg-background">
+                                <div className="px-4 py-3 border-b border-border/40">
+                                  <h4 className="text-sm font-semibold">Meal Breakdown</h4>
                                 </div>
+
+                                <div className="divide-y divide-border/30">
+                                  {selectedNutritionDay.meals.map((meal) => (
+                                    <div
+                                      key={`${selectedNutritionDay.date}-${meal.mealType}-${meal.recipeId}`}
+                                      className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                                    >
+                                      <div>
+                                        <p className="text-sm font-medium capitalize">
+                                          {meal.mealType}: {meal.title}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Servings: {meal.servings}
+                                        </p>
+                                      </div>
+
+                                      <div className="text-xs text-muted-foreground sm:text-right">
+                                        <div>{meal.nutrition.calories} cal</div>
+                                        <div>
+                                          P {meal.nutrition.protein}g • C {meal.nutrition.carbs}g •
+                                          F {meal.nutrition.fat}g
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             )}
                           </div>
-                      )}
+                        )}
                       </div>
                     </div>
                   </div>
                   {/* Meal planning grid */}
                   {isLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground"/>
-                      </div>
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    </div>
                   ) : (
-                      <div className="bg-background rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-                        {/* Column headers */}
-                        <div
-                            className="hidden sm:flex items-center gap-3 px-3 py-3 border-b border-border/50 bg-muted/20">
-                          <div className="w-16 flex-shrink-0"/>
-                          {MEALS.map((meal) => {
-                            const {icon: Icon, color, bg} = MEAL_ICONS[meal];
-                            return (
-                                <div key={meal} className="flex-1 flex items-center justify-center gap-2">
-                                  <div className={`${bg} p-1.5 rounded-lg`}>
-                                    <Icon className="h-4 w-4" style={{color}}/>
-                                  </div>
-                                  <span className="font-semibold text-sm capitalize" style={{color}}>{meal}</span>
-                                </div>
-                            );
-                          })}
-                        </div>
+                    <div className="bg-background rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+                      {/* Column headers */}
+                      <div className="hidden sm:flex items-center gap-3 px-3 py-3 border-b border-border/50 bg-muted/20">
+                        <div className="w-16 flex-shrink-0" />
+                        {MEALS.map((meal) => {
+                          const { icon: Icon, color, bg } = MEAL_ICONS[meal];
+                          return (
+                            <div
+                              key={meal}
+                              className="flex-1 flex items-center justify-center gap-2"
+                            >
+                              <div className={`${bg} p-1.5 rounded-lg`}>
+                                <Icon className="h-4 w-4" style={{ color }} />
+                              </div>
+                              <span className="font-semibold text-sm capitalize" style={{ color }}>
+                                {meal}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                        {/* Day rows */}
-                        <div className="divide-y divide-border/30">
+                      {/* Day rows */}
+                      <div className="divide-y divide-border/30">
                         {weekPlan?.days.map((day, dayIndex) => {
-                          const dayDate = new Date(day.date + 'T00:00:00');
+                          const dayDate = new Date(`${day.date}T00:00:00`);
                           const today = new Date();
                           const todayStr = formatLocalDateStr(today);
                           const isToday = day.date === todayStr;
@@ -932,20 +990,22 @@ const MealPlanner = () => {
                               key={day.date}
                               className={`flex items-stretch gap-2 sm:gap-3 px-3 py-3 transition-colors ${
                                 isToday
-                                  ? 'bg-primary/[0.07]'
+                                  ? "bg-primary/[0.07]"
                                   : isEven
-                                    ? 'bg-muted/10'
-                                    : 'bg-background'
+                                    ? "bg-muted/10"
+                                    : "bg-background"
                               }`}
                             >
                               <div className="w-16 flex-shrink-0 flex flex-col justify-center">
-                                <p className={`font-bold text-base ${isToday ? 'text-primary' : 'text-foreground'}`}>
+                                <p
+                                  className={`font-bold text-base ${isToday ? "text-primary" : "text-foreground"}`}
+                                >
                                   {DAYS[dayIndex]}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {dayDate.toLocaleDateString(undefined, {
-                                    month: 'short',
-                                    day: 'numeric',
+                                    month: "short",
+                                    day: "numeric",
                                   })}
                                 </p>
                                 {isToday && (
@@ -995,10 +1055,9 @@ const MealPlanner = () => {
           open={pickerOpen}
           onOpenChange={setPickerOpen}
           onSelectRecipe={handleSelectRecipe}
-          currentDayDate={selectedSlot?.dayDate || ''}
+          currentDayDate={selectedSlot?.dayDate || ""}
           availableDays={getAvailableDays()}
         />
-
       </SidebarProvider>
     </RequireAuth>
   );

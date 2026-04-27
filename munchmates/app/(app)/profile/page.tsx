@@ -6,394 +6,475 @@
 
 "use client";
 
-import { useEffect, useState, Dispatch, SetStateAction } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { AlertTriangle, Globe, Leaf, LogOut, Save, ShieldAlert, Trash2, User } from "lucide-react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import AppSidebar from "@/components/layout/app-sidebar";
-import {
-    initKeycloak,
-    getAccessTokenClaims,
-    logout,
-} from "@/lib/keycloak";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { authedFetch } from "@/lib/authedFetch";
 import { setDietaryPrefs } from "@/lib/dietary-prefs";
-import { LogOut, User, ShieldAlert, Trash2, Save, Leaf, AlertTriangle, Globe } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { getAccessTokenClaims, initKeycloak, logout } from "@/lib/keycloak";
 
 type AccessTokenClaims = {
-    sub?: string;
-    email?: string;
-    preferred_username?: string;
-    name?: string;
+  sub?: string;
+  email?: string;
+  preferred_username?: string;
+  name?: string;
 };
 
 const allDiets = [
-    "Gluten Free", "Ketogenic", "Vegetarian", "Lacto-Vegetarian",
-    "Ovo-Vegetarian", "Vegan", "Pescetarian", "Paleo", "Primal",
-    "Low FODMAP", "Whole30",
+  "Gluten Free",
+  "Ketogenic",
+  "Vegetarian",
+  "Lacto-Vegetarian",
+  "Ovo-Vegetarian",
+  "Vegan",
+  "Pescetarian",
+  "Paleo",
+  "Primal",
+  "Low FODMAP",
+  "Whole30",
 ];
 
 const allIntolerances = [
-    "Dairy", "Egg", "Gluten", "Grain", "Peanut", "Seafood",
-    "Sesame", "Shellfish", "Soy", "Sulfite", "Tree Nut", "Wheat",
+  "Dairy",
+  "Egg",
+  "Gluten",
+  "Grain",
+  "Peanut",
+  "Seafood",
+  "Sesame",
+  "Shellfish",
+  "Soy",
+  "Sulfite",
+  "Tree Nut",
+  "Wheat",
 ];
 
 const allCuisines = [
-    "African", "Asian", "American", "British", "Cajun", "Caribbean",
-    "Chinese", "Eastern European", "European", "French", "German",
-    "Greek", "Indian", "Irish", "Italian", "Japanese", "Jewish",
-    "Korean", "Latin American", "Mediterranean", "Mexican",
-    "Middle Eastern", "Nordic", "Southern", "Spanish", "Thai", "Vietnamese",
+  "African",
+  "Asian",
+  "American",
+  "British",
+  "Cajun",
+  "Caribbean",
+  "Chinese",
+  "Eastern European",
+  "European",
+  "French",
+  "German",
+  "Greek",
+  "Indian",
+  "Irish",
+  "Italian",
+  "Japanese",
+  "Jewish",
+  "Korean",
+  "Latin American",
+  "Mediterranean",
+  "Mexican",
+  "Middle Eastern",
+  "Nordic",
+  "Southern",
+  "Spanish",
+  "Thai",
+  "Vietnamese",
 ];
 
 function toggleItem(item: string, setItems: Dispatch<SetStateAction<string[]>>) {
-    setItems(prev =>
-        prev.includes(item) ? prev.filter(s => s !== item) : [...prev, item]
-    );
+  setItems((prev) => (prev.includes(item) ? prev.filter((s) => s !== item) : [...prev, item]));
 }
 
-function ChipGrid({ items, selected, onToggle }: {
-    items: string[];
-    selected: string[];
-    onToggle: (item: string) => void;
+function ChipGrid({
+  items,
+  selected,
+  onToggle,
+}: {
+  items: string[];
+  selected: string[];
+  onToggle: (item: string) => void;
 }) {
-    return (
-        <div className="flex flex-wrap gap-2">
-            {items.map(item => {
-                const active = selected.includes(item);
-                return (
-                    <button
-                        key={item}
-                        type="button"
-                        onClick={() => onToggle(item)}
-                        className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                            active
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted/60 text-foreground/70 hover:bg-muted"
-                        }`}
-                    >
-                        {item}
-                    </button>
-                );
-            })}
-        </div>
-    );
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => {
+        const active = selected.includes(item);
+        return (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onToggle(item)}
+            className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              active
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted/60 text-foreground/70 hover:bg-muted"
+            }`}
+          >
+            {item}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
-const ProfilePage = () => {
-    const router = useRouter();
+export const ProfilePage = () => {
+  const [authReady, setAuthReady] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [favoriteCuisines, setFavoriteCuisines] = useState<string[]>([]);
+  const [diets, setDiets] = useState<string[]>([]);
+  const [intolerances, setIntolerances] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [dailyCalorieGoal, setDailyCalorieGoal] = useState("");
+  const [dailyProteinGoal, setDailyProteinGoal] = useState("");
+  const [dailyCarbGoal, setDailyCarbGoal] = useState("");
+  const [dailyFatGoal, setDailyFatGoal] = useState("");
 
-    const [authReady, setAuthReady] = useState(false);
-    const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
-    const [favoriteCuisines, setFavoriteCuisines] = useState<string[]>([]);
-    const [diets, setDiets] = useState<string[]>([]);
-    const [intolerances, setIntolerances] = useState<string[]>([]);
-    const [saving, setSaving] = useState(false);
-    const [saveError, setSaveError] = useState("");
-    const [saveSuccess, setSaveSuccess] = useState(false);
-    const [deleting, setDeleting] = useState(false);
-    const [dailyCalorieGoal, setDailyCalorieGoal] = useState("");
-    const [dailyProteinGoal, setDailyProteinGoal] = useState("");
-    const [dailyCarbGoal, setDailyCarbGoal] = useState("");
-    const [dailyFatGoal, setDailyFatGoal] = useState("");
-
-    useEffect(() => {
-        let mounted = true;
-        (async () => {
-            try {
-                const authed = await initKeycloak("login-required");
-                if (!mounted || !authed) return;
-                setAuthReady(true);
-                const claims = getAccessTokenClaims<AccessTokenClaims>();
-                if (claims) {
-                    setName(claims.name ?? claims.preferred_username ?? claims.sub ?? "");
-                    setEmail(claims.email ?? "");
-                }
-            } catch (err) {
-                console.error("Error initializing Keycloak on profile page", err);
-            }
-        })();
-        return () => { mounted = false; };
-    }, []);
-
-    useEffect(() => {
-        if (!authReady) return;
-        const loadProfile = async () => {
-            try {
-                const res = await authedFetch("/api/profile");
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data.favoriteCuisines) {
-                    const parsed = typeof data.favoriteCuisines === "string"
-                        ? data.favoriteCuisines.split(",").map((s: string) => s.trim()).filter(Boolean)
-                        : data.favoriteCuisines;
-                    setFavoriteCuisines(parsed);
-                }
-                if (data.diets) setDiets(data.diets);
-                if (data.intolerances) setIntolerances(data.intolerances);
-                setDailyCalorieGoal(data.dailyCalorieGoal?.toString() ?? "");
-                setDailyProteinGoal(data.dailyProteinGoal?.toString() ?? "");
-                setDailyCarbGoal(data.dailyCarbGoal?.toString() ?? "");
-                setDailyFatGoal(data.dailyFatGoal?.toString() ?? "");
-            } catch (err) {
-                console.error("Error loading profile", err);
-            }
-        };
-        loadProfile();
-    }, [authReady]);
-
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setSaving(true);
-        setSaveError("");
-        setSaveSuccess(false);
-        try {
-            const res = await authedFetch("/api/profile", {
-                method: "POST",
-                body: JSON.stringify({
-                    favoriteCuisines: favoriteCuisines.join(", "),
-                    diets,
-                    intolerances,
-                    dailyCalorieGoal,
-                    dailyProteinGoal,
-                    dailyCarbGoal,
-                    dailyFatGoal,
-                }),
-            });
-            if (!res.ok) {
-                setSaveError("Could not save changes. Please try again.");
-                setSaving(false);
-                return;
-            }
-            setDietaryPrefs({ diets, intolerances });
-            setSaveSuccess(true);
-            setSaving(false);
-        } catch (err) {
-            console.error("Error saving profile", err);
-            setSaveError("Could not save changes. Please try again.");
-            setSaving(false);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const authed = await initKeycloak("login-required");
+        if (!mounted || !authed) return;
+        setAuthReady(true);
+        const claims = getAccessTokenClaims<AccessTokenClaims>();
+        if (claims) {
+          setName(claims.name ?? claims.preferred_username ?? claims.sub ?? "");
+          setEmail(claims.email ?? "");
         }
+      } catch (err) {
+        console.error("Error initializing Keycloak on profile page", err);
+      }
+    })();
+    return () => {
+      mounted = false;
     };
+  }, []);
 
-    const handleDeleteAccount = async () => {
-        const confirmed = window.confirm(
-            "Are you sure you want to delete your account? This action cannot be undone."
-        );
-        if (!confirmed) return;
-        try {
-            setDeleting(true);
-            const res = await authedFetch("/api/account", { method: "DELETE" });
-            if (!res.ok) { setDeleting(false); return; }
-            await logout(window.location.origin);
-        } catch (err) {
-            console.error("Error deleting account", err);
-            setDeleting(false);
+  useEffect(() => {
+    if (!authReady) return;
+    const loadProfile = async () => {
+      try {
+        const res = await authedFetch("/api/profile");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.favoriteCuisines) {
+          const parsed =
+            typeof data.favoriteCuisines === "string"
+              ? data.favoriteCuisines
+                  .split(",")
+                  .map((s: string) => s.trim())
+                  .filter(Boolean)
+              : data.favoriteCuisines;
+          setFavoriteCuisines(parsed);
         }
+        if (data.diets) setDiets(data.diets);
+        if (data.intolerances) setIntolerances(data.intolerances);
+        setDailyCalorieGoal(data.dailyCalorieGoal?.toString() ?? "");
+        setDailyProteinGoal(data.dailyProteinGoal?.toString() ?? "");
+        setDailyCarbGoal(data.dailyCarbGoal?.toString() ?? "");
+        setDailyFatGoal(data.dailyFatGoal?.toString() ?? "");
+      } catch (err) {
+        console.error("Error loading profile", err);
+      }
     };
+    loadProfile();
+  }, [authReady]);
 
-    const card = "rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)]";
+  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSaving(true);
+    setSaveError("");
+    setSaveSuccess(false);
+    try {
+      const res = await authedFetch("/api/profile", {
+        method: "POST",
+        body: JSON.stringify({
+          favoriteCuisines: favoriteCuisines.join(", "),
+          diets,
+          intolerances,
+          dailyCalorieGoal,
+          dailyProteinGoal,
+          dailyCarbGoal,
+          dailyFatGoal,
+        }),
+      });
+      if (!res.ok) {
+        setSaveError("Could not save changes. Please try again.");
+        setSaving(false);
+        return;
+      }
+      setDietaryPrefs({ diets, intolerances });
+      setSaveSuccess(true);
+      setSaving(false);
+    } catch (err) {
+      console.error("Error saving profile", err);
+      setSaveError("Could not save changes. Please try again.");
+      setSaving(false);
+    }
+  };
 
-    return (
-        <SidebarProvider defaultOpen={false}>
-            <div className="min-h-screen flex w-full">
-                <AppSidebar />
-                <div className="flex-1 flex flex-col">
-                    <main className="flex-1 p-4 sm:p-6 bg-muted/20">
-                        <div className="w-full max-w-2xl mx-auto space-y-5">
-                            <form onSubmit={handleSubmit} className="space-y-5">
-
-                                {/* Account */}
-                                <div className={card}>
-                                    <div className="flex items-center gap-2 px-5 pt-4 pb-3">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(10,132,255,0.1)" }}>
-                                            <User className="h-4 w-4" style={{ color: "#0A84FF" }} />
-                                        </div>
-                                        <h2 className="text-[15px] font-semibold">Account</h2>
-                                    </div>
-                                    <div className="px-5 pb-4 divide-y divide-border/30">
-                                        <div className="flex items-center justify-between py-3">
-                                            <span className="text-[13px] text-muted-foreground">Name</span>
-                                            <span className="text-[13px] font-medium">{name || "—"}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-3">
-                                            <span className="text-[13px] text-muted-foreground">Email</span>
-                                            <span className="text-[13px] font-medium">{email || "—"}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Favorite Cuisines */}
-                                <div className={card}>
-                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(48,209,88,0.1)" }}>
-                                            <Globe className="h-4 w-4" style={{ color: "#30D158" }} />
-                                        </div>
-                                        <h2 className="text-[15px] font-semibold">Favorite Cuisines</h2>
-                                    </div>
-                                    <div className="px-5 pb-4 pt-2">
-                                        <ChipGrid
-                                            items={allCuisines}
-                                            selected={favoriteCuisines}
-                                            onToggle={(c) => toggleItem(c, setFavoriteCuisines)}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Dietary Preferences */}
-                                <div className={card}>
-                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(255,159,10,0.1)" }}>
-                                            <Leaf className="h-4 w-4" style={{ color: "#FF9F0A" }} />
-                                        </div>
-                                        <h2 className="text-[15px] font-semibold">Dietary Preferences</h2>
-                                    </div>
-                                    <div className="px-5 pb-4 pt-2">
-                                        <ChipGrid
-                                            items={allDiets}
-                                            selected={diets}
-                                            onToggle={(d) => toggleItem(d, setDiets)}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Allergies / Intolerances */}
-                                <div className={card}>
-                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(255,69,58,0.1)" }}>
-                                            <AlertTriangle className="h-4 w-4" style={{ color: "#FF453A" }} />
-                                        </div>
-                                        <h2 className="text-[15px] font-semibold">Allergies &amp; Intolerances</h2>
-                                    </div>
-                                    <div className="px-5 pb-4 pt-2">
-                                        <ChipGrid
-                                            items={allIntolerances}
-                                            selected={intolerances}
-                                            onToggle={(i) => toggleItem(i, setIntolerances)}
-                                        />
-                                    </div>
-                                </div>
-                                {/* Dietary Goals */}
-                                <div className={card}>
-                                    <div className="flex items-center gap-2 px-5 pt-4 pb-1">
-                                        <div
-                                            className="flex h-8 w-8 items-center justify-center rounded-lg"
-                                            style={{ backgroundColor: "rgba(10,132,255,0.1)" }}
-                                        >
-                                            <Leaf className="h-4 w-4" style={{ color: "#0A84FF" }} />
-                                        </div>
-                                        <h2 className="text-[15px] font-semibold">Dietary Goals</h2>
-                                    </div>
-
-                                    <div className="px-5 pb-4 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[12px] font-medium text-muted-foreground">
-                                                Daily Calories
-                                            </label>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                value={dailyCalorieGoal}
-                                                onChange={(e) => setDailyCalorieGoal(e.target.value)}
-                                                placeholder="2000"
-                                                className="h-10 rounded-xl"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[12px] font-medium text-muted-foreground">
-                                                Protein (g)
-                                            </label>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                value={dailyProteinGoal}
-                                                onChange={(e) => setDailyProteinGoal(e.target.value)}
-                                                placeholder="150"
-                                                className="h-10 rounded-xl"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[12px] font-medium text-muted-foreground">
-                                                Carbs (g)
-                                            </label>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                value={dailyCarbGoal}
-                                                onChange={(e) => setDailyCarbGoal(e.target.value)}
-                                                placeholder="200"
-                                                className="h-10 rounded-xl"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[12px] font-medium text-muted-foreground">
-                                                Fat (g)
-                                            </label>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                value={dailyFatGoal}
-                                                onChange={(e) => setDailyFatGoal(e.target.value)}
-                                                placeholder="70"
-                                                className="h-10 rounded-xl"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* Save */}
-                                {saveError && (
-                                    <p className="text-[13px] font-medium text-red-500" role="alert">{saveError}</p>
-                                )}
-                                {saveSuccess && !saveError && (
-                                    <p className="text-[13px] font-medium text-green-600" role="status">Changes saved.</p>
-                                )}
-                                <Button type="submit" className="w-full h-11 rounded-xl text-[14px] font-semibold" disabled={saving}>
-                                    <Save className="h-4 w-4 mr-2" />
-                                    {saving ? "Saving..." : "Save Changes"}
-                                </Button>
-
-                                {/* Account Actions */}
-                                <div className={card}>
-                                    <div className="flex items-center gap-2 px-5 pt-4 pb-3">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(94,92,230,0.1)" }}>
-                                            <ShieldAlert className="h-4 w-4" style={{ color: "#5E5CE6" }} />
-                                        </div>
-                                        <h2 className="text-[15px] font-semibold">Account Actions</h2>
-                                    </div>
-                                    <div className="px-5 pb-4 divide-y divide-border/30">
-                                        <button
-                                            type="button"
-                                            onClick={() => logout()}
-                                            className="flex items-center gap-3 w-full py-3"
-                                        >
-                                            <LogOut className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-[13px] font-medium">Sign Out</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleDeleteAccount}
-                                            disabled={deleting}
-                                            className="flex items-center gap-3 w-full py-3"
-                                        >
-                                            <Trash2 className="h-4 w-4 text-red-500" />
-                                            <span className="text-[13px] font-medium text-red-500">
-                                                {deleting ? "Removing account..." : "Delete Account"}
-                                            </span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                            </form>
-                        </div>
-                    </main>
-                </div>
-            </div>
-        </SidebarProvider>
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete your account? This action cannot be undone.",
     );
+    if (!confirmed) return;
+    try {
+      setDeleting(true);
+      const res = await authedFetch("/api/account", { method: "DELETE" });
+      if (!res.ok) {
+        setDeleting(false);
+        return;
+      }
+      await logout(window.location.origin);
+    } catch (err) {
+      console.error("Error deleting account", err);
+      setDeleting(false);
+    }
+  };
+
+  const card = "rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)]";
+
+  return (
+    <SidebarProvider defaultOpen={false}>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col">
+          <main className="flex-1 p-4 sm:p-6 bg-muted/20">
+            <div className="w-full max-w-2xl mx-auto space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Account */}
+                <div className={card}>
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-3">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: "rgba(10,132,255,0.1)" }}
+                    >
+                      <User className="h-4 w-4" style={{ color: "#0A84FF" }} />
+                    </div>
+                    <h2 className="text-[15px] font-semibold">Account</h2>
+                  </div>
+                  <div className="px-5 pb-4 divide-y divide-border/30">
+                    <div className="flex items-center justify-between py-3">
+                      <span className="text-[13px] text-muted-foreground">Name</span>
+                      <span className="text-[13px] font-medium">{name || "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-3">
+                      <span className="text-[13px] text-muted-foreground">Email</span>
+                      <span className="text-[13px] font-medium">{email || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Favorite Cuisines */}
+                <div className={card}>
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: "rgba(48,209,88,0.1)" }}
+                    >
+                      <Globe className="h-4 w-4" style={{ color: "#30D158" }} />
+                    </div>
+                    <h2 className="text-[15px] font-semibold">Favorite Cuisines</h2>
+                  </div>
+                  <div className="px-5 pb-4 pt-2">
+                    <ChipGrid
+                      items={allCuisines}
+                      selected={favoriteCuisines}
+                      onToggle={(c) => toggleItem(c, setFavoriteCuisines)}
+                    />
+                  </div>
+                </div>
+
+                {/* Dietary Preferences */}
+                <div className={card}>
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: "rgba(255,159,10,0.1)" }}
+                    >
+                      <Leaf className="h-4 w-4" style={{ color: "#FF9F0A" }} />
+                    </div>
+                    <h2 className="text-[15px] font-semibold">Dietary Preferences</h2>
+                  </div>
+                  <div className="px-5 pb-4 pt-2">
+                    <ChipGrid
+                      items={allDiets}
+                      selected={diets}
+                      onToggle={(d) => toggleItem(d, setDiets)}
+                    />
+                  </div>
+                </div>
+
+                {/* Allergies / Intolerances */}
+                <div className={card}>
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: "rgba(255,69,58,0.1)" }}
+                    >
+                      <AlertTriangle className="h-4 w-4" style={{ color: "#FF453A" }} />
+                    </div>
+                    <h2 className="text-[15px] font-semibold">Allergies &amp; Intolerances</h2>
+                  </div>
+                  <div className="px-5 pb-4 pt-2">
+                    <ChipGrid
+                      items={allIntolerances}
+                      selected={intolerances}
+                      onToggle={(i) => toggleItem(i, setIntolerances)}
+                    />
+                  </div>
+                </div>
+                {/* Dietary Goals */}
+                <div className={card}>
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: "rgba(10,132,255,0.1)" }}
+                    >
+                      <Leaf className="h-4 w-4" style={{ color: "#0A84FF" }} />
+                    </div>
+                    <h2 className="text-[15px] font-semibold">Dietary Goals</h2>
+                  </div>
+
+                  <div className="px-5 pb-4 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="calorie-input"
+                        className="text-[12px] font-medium text-muted-foreground"
+                      >
+                        Daily Calories
+                      </label>
+                      <Input
+                        id="calorie-input"
+                        type="number"
+                        min="0"
+                        value={dailyCalorieGoal}
+                        onChange={(e) => setDailyCalorieGoal(e.target.value)}
+                        placeholder="2000"
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="protein-input"
+                        className="text-[12px] font-medium text-muted-foreground"
+                      >
+                        Protein (g)
+                      </label>
+                      <Input
+                        id="protein-input"
+                        type="number"
+                        min="0"
+                        value={dailyProteinGoal}
+                        onChange={(e) => setDailyProteinGoal(e.target.value)}
+                        placeholder="150"
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="carb-input"
+                        className="text-[12px] font-medium text-muted-foreground"
+                      >
+                        Carbs (g)
+                      </label>
+                      <Input
+                        id="carb-input"
+                        type="number"
+                        min="0"
+                        value={dailyCarbGoal}
+                        onChange={(e) => setDailyCarbGoal(e.target.value)}
+                        placeholder="200"
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="fat-input"
+                        className="text-[12px] font-medium text-muted-foreground"
+                      >
+                        Fat (g)
+                      </label>
+                      <Input
+                        id="fat-input"
+                        type="number"
+                        min="0"
+                        value={dailyFatGoal}
+                        onChange={(e) => setDailyFatGoal(e.target.value)}
+                        placeholder="70"
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+                  </div>
+                </div>
+                {/* Save */}
+                {saveError && (
+                  <p className="text-[13px] font-medium text-red-500" role="alert">
+                    {saveError}
+                  </p>
+                )}
+                {saveSuccess && !saveError && (
+                  <p className="text-[13px] font-medium text-green-600" role="status">
+                    Changes saved.
+                  </p>
+                )}
+                <Button
+                  type="submit"
+                  className="w-full h-11 rounded-xl text-[14px] font-semibold"
+                  disabled={saving}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+
+                {/* Account Actions */}
+                <div className={card}>
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-3">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: "rgba(94,92,230,0.1)" }}
+                    >
+                      <ShieldAlert className="h-4 w-4" style={{ color: "#5E5CE6" }} />
+                    </div>
+                    <h2 className="text-[15px] font-semibold">Account Actions</h2>
+                  </div>
+                  <div className="px-5 pb-4 divide-y divide-border/30">
+                    <button
+                      type="button"
+                      onClick={() => logout()}
+                      className="flex items-center gap-3 w-full py-3"
+                    >
+                      <LogOut className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-[13px] font-medium">Sign Out</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccount}
+                      disabled={deleting}
+                      className="flex items-center gap-3 w-full py-3"
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <span className="text-[13px] font-medium text-red-500">
+                        {deleting ? "Removing account..." : "Delete Account"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
 };
 
 export default ProfilePage;

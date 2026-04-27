@@ -4,22 +4,32 @@
 // - Completes items from presupplied list of ingredients and currently selected items
 // - Provides additional dropdowns for grocery list and pantry items (fetched via API)
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import Autosuggest from "./Autosuggest";
-import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
-import { Dispatch, SetStateAction, ReactNode } from "react";
-import { XIcon, ShoppingCart, Package } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { Package, ShoppingCart, XIcon } from "lucide-react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { authedFetch } from "@/lib/authedFetch";
-import type { GroceryItem } from "@/lib/types/grocery";
-import type { PantryItem } from "@/lib/types/pantry";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import Autosuggest from "./Autosuggest";
+
+interface GroceryItem {
+  id: number;
+  name: string;
+  category: string;
+  completed: boolean;
+  quantity?: string;
+}
+
+interface PantryItem {
+  id: number;
+  name: string;
+  canonName: string;
+  quantity: string;
+  category: string;
+  expiryDate?: string | null;
+  addedAt: string;
+}
 
 const data = [
   // Produce - Fruits
@@ -392,22 +402,20 @@ const data = [
   "Frozen Vegetables",
   "Frozen Berries",
   "Frozen Pizza",
-  "Frozen Fries"
+  "Frozen Fries",
 ];
-
 
 type IngredientListProps = {
   ingredients: string[];
   setIngredients: Dispatch<SetStateAction<string[]>>;
-  children?: ReactNode;   // ← new
+  children?: ReactNode; // ← new
 };
 
-
 export default function IngredientList({
-                                         ingredients,
-                                         setIngredients,
-                                         children,
-                                       }: IngredientListProps) {
+  ingredients,
+  setIngredients,
+  children,
+}: IngredientListProps) {
   const [query, setQuery] = useState("");
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
@@ -415,7 +423,7 @@ export default function IngredientList({
   // Fetch grocery list from API
   const loadGroceryList = useCallback(async () => {
     try {
-      const res = await authedFetch('/api/grocery');
+      const res = await authedFetch("/api/grocery");
       if (res.ok) {
         const data = await res.json();
         setGroceryItems(data.items || []);
@@ -428,7 +436,7 @@ export default function IngredientList({
   // Fetch pantry items from API
   const loadPantryItems = useCallback(async () => {
     try {
-      const res = await authedFetch('/api/pantry');
+      const res = await authedFetch("/api/pantry");
       if (res.ok) {
         const data = await res.json();
         setPantryItems(data.items || []);
@@ -446,8 +454,8 @@ export default function IngredientList({
 
   // Get unique, non-completed grocery items that aren't already in the ingredients list
   const availableGroceryItems = groceryItems
-    .filter(item => !item.completed && !ingredients.includes(item.name))
-    .map(item => item.name);
+    .filter((item) => !item.completed && !ingredients.includes(item.name))
+    .map((item) => item.name);
 
   // Get pantry items that aren't already in the ingredients list
   const availablePantryItems = pantryItems
@@ -472,7 +480,7 @@ export default function IngredientList({
     }
   };
 
-  const handleAddIngredient = (e: React.FormEvent) => {
+  const handleAddIngredient = (e: React.SubmitEvent) => {
     e.preventDefault();
     if (query) {
       addIngredient(query);
@@ -481,14 +489,12 @@ export default function IngredientList({
   };
 
   const handleDeleteIngredient = (index: number) => {
-    setIngredients((prevIngredients) =>
-      prevIngredients.filter((_, i) => i !== index),
-    );
+    setIngredients((prevIngredients) => prevIngredients.filter((_, i) => i !== index));
   };
 
   const clearIngredients = () => {
     setIngredients([]);
-  }
+  };
 
   const COLLAPSED_LIMIT = 8;
   const [expanded, setExpanded] = useState(false);
@@ -501,118 +507,112 @@ export default function IngredientList({
   const hiddenCount = ingredients.length - visibleIngredients.length;
 
   return (
-      <div className="w-full">
-        {ingredients.length > 0 && (
-          <ul className="flex flex-wrap">
-            {visibleIngredients.map((ingredient, index) => (
-                <li key={ingredient} className="p-0.5">
-                  <Badge
-                      className="justify-between"
-                  >
-                    {ingredient}
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        className="size-6 p-0 rounded-full"
-                        onClick={() => handleDeleteIngredient(index)}
-                    >
-                      <XIcon className="inline justify-center"/>
-                    </Button>
-                  </Badge>
-                </li>
-            ))}
-            {hiddenCount > 0 && (
-              <li className="p-0.5">
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer hover:bg-accent transition-colors"
-                  onClick={() => setExpanded(true)}
+    <div className="w-full">
+      {ingredients.length > 0 && (
+        <ul className="flex flex-wrap">
+          {visibleIngredients.map((ingredient, index) => (
+            <li key={ingredient} className="p-0.5">
+              <Badge className="justify-between">
+                {ingredient}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="size-6 p-0 rounded-full"
+                  onClick={() => handleDeleteIngredient(index)}
                 >
-                  +{hiddenCount} more
-                </Badge>
-              </li>
-            )}
-            {expanded && ingredients.length > COLLAPSED_LIMIT && (
-              <li className="p-0.5">
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer hover:bg-accent transition-colors"
-                  onClick={() => setExpanded(false)}
-                >
-                  show less
-                </Badge>
-              </li>
-            )}
-          </ul>
-        )}
+                  <XIcon className="inline justify-center" />
+                </Button>
+              </Badge>
+            </li>
+          ))}
+          {hiddenCount > 0 && (
+            <li className="p-0.5">
+              <Badge
+                variant="outline"
+                className="cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => setExpanded(true)}
+              >
+                +{hiddenCount} more
+              </Badge>
+            </li>
+          )}
+          {expanded && ingredients.length > COLLAPSED_LIMIT && (
+            <li className="p-0.5">
+              <Badge
+                variant="outline"
+                className="cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => setExpanded(false)}
+              >
+                show less
+              </Badge>
+            </li>
+          )}
+        </ul>
+      )}
 
-        <form className="relative mt-4 space-y-3" onSubmit={handleAddIngredient}>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <Autosuggest
-                  data={[...data, ...ingredients]}
-                  query={query}
-                  setQuery={setQuery}
-                  onSelect={(item) => {
-                    addIngredient(item);
-                    setQuery("");
-                  }}
-              />
-            </div>
-
-            {/* Pantry Dropdown */}
-            {availablePantryItems.length > 0 && (
-              <Select onValueChange={handleAddFromPantry}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4" />
-                    <SelectValue placeholder="From pantry" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {availablePantryItems.map((item) => (
-                    <SelectItem key={item.name} value={item.canonName}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            {/* Grocery List Dropdown */}
-            {availableGroceryItems.length > 0 && (
-              <Select onValueChange={handleAddFromGroceryList}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <div className="flex items-center gap-2">
-                    <ShoppingCart className="h-4 w-4" />
-                    <SelectValue placeholder="From grocery list" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {availableGroceryItems.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            <Button type="submit" className="shrink-0">
-              Add ingredient
-            </Button>
-
-            <Button
-                type="button"
-                onClick={clearIngredients}
-                className="shrink-0"
-            >
-              Clear List
-            </Button>
-
-            {children}
+      <form className="relative mt-4 space-y-3" onSubmit={handleAddIngredient}>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <Autosuggest
+              data={[...data, ...ingredients]}
+              query={query}
+              setQuery={setQuery}
+              onSelect={(item) => {
+                addIngredient(item);
+                setQuery("");
+              }}
+            />
           </div>
-        </form>
-      </div>
+
+          {/* Pantry Dropdown */}
+          {availablePantryItems.length > 0 && (
+            <Select onValueChange={handleAddFromPantry}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  <SelectValue placeholder="From pantry" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {availablePantryItems.map((item) => (
+                  <SelectItem key={item.name} value={item.canonName}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {/* Grocery List Dropdown */}
+          {availableGroceryItems.length > 0 && (
+            <Select onValueChange={handleAddFromGroceryList}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4" />
+                  <SelectValue placeholder="From grocery list" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {availableGroceryItems.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Button type="submit" className="shrink-0">
+            Add ingredient
+          </Button>
+
+          <Button type="button" onClick={clearIngredients} className="shrink-0">
+            Clear List
+          </Button>
+
+          {children}
+        </div>
+      </form>
+    </div>
   );
 }

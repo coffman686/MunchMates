@@ -10,12 +10,12 @@
 // - Validates meal plan correctness and week
 // Backed by Postgres via Prisma — data persists across server restarts.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
-import { WeeklyMealPlan, DayPlan, MealPlanEntry } from "@/lib/types/meal-plan";
-import { ensureUserExists } from "@/lib/user-service";
+import type { DayPlan, MealPlanEntry, WeeklyMealPlan } from "@/lib/types/meal-plan";
+import { getOrSet } from "@/lib/utils";
+import { verifyBearer } from "@/lib/verifyToken";
 
 // Reconstruct the frontend-compatible DayPlan[] shape from flat MealEntry rows
 function buildWeeklyPlan(
@@ -31,17 +31,12 @@ function buildWeeklyPlan(
     originalServings: number;
     readyInMinutes: number | null;
   }[],
-  days: DayPlan[]
+  days: DayPlan[],
 ): WeeklyMealPlan {
   // Build a map of date -> mealType -> entry
   const mealMap = new Map<string, Map<string, MealPlanEntry>>();
   for (const meal of meals) {
-    let dayMap = mealMap.get(meal.date);
-    if (!dayMap) {
-      dayMap = new Map();
-      mealMap.set(meal.date, dayMap);
-    }
-    dayMap.set(meal.mealType, {
+    getOrSet(mealMap, meal.date, () => new Map()).set(meal.mealType, {
       id: meal.entryId,
       recipeId: meal.recipeId,
       title: meal.title,
@@ -66,6 +61,7 @@ function buildWeeklyPlan(
   return { weekStart, days: resultDays };
 }
 
+// GET meal plan starting at a given week
 export async function GET(req: NextRequest) {
   try {
     const payload = await verifyBearer(req.headers.get("authorization") || undefined);
@@ -85,7 +81,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Generate the 7-day structure for the week
-    const startDate = new Date(weekStart + "T00:00:00");
+    const startDate = new Date(`${weekStart}T00:00:00`);
     const days: DayPlan[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(startDate);
@@ -103,20 +99,33 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Update meal plan entries
 export async function POST(req: NextRequest) {
   try {
     const payload = await verifyBearer(req.headers.get("authorization") || undefined);
 
     const body = await req.json();
 
-    if (!body.plan || !body.plan.weekStart) {
+    if (!body.plan?.weekStart) {
       return errorResponse(400, "Invalid meal plan data");
     }
 
     const plan: WeeklyMealPlan = body.plan;
     const userId = payload.sub;
 
-    await ensureUserExists(userId, payload);
+    // Ensure User record exists
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {
+        name: payload.name ?? "",
+        username: payload.preferred_username ?? "",
+      },
+      create: {
+        id: userId,
+        name: payload.name ?? "",
+        username: payload.preferred_username ?? "",
+      },
+    });
 
     // Collect all meal entries from the plan
     const mealEntries: {
@@ -153,7 +162,9 @@ export async function POST(req: NextRequest) {
     // Transaction: upsert the plan, delete old meals, create new ones
     await prisma.$transaction(async (tx) => {
       const mealPlan = await tx.weeklyMealPlan.upsert({
-        where: { userId_weekStart: { userId, weekStart: plan.weekStart } },
+        where: {
+          userId_weekStart: { userId, weekStart: plan.weekStart },
+        },
         update: {},
         create: { userId, weekStart: plan.weekStart },
       });

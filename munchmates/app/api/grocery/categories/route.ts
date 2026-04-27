@@ -2,207 +2,207 @@
 // Endpoint to manage user's custom grocery categories
 // Backed by Postgres via Prisma — data persists across server restarts
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse, handleRouteError } from "@/lib/apiErrors";
-import { verifyBearer } from "@/lib/verifyToken";
 import { prisma } from "@/lib/prisma";
-import { ensureUserExists } from "@/lib/user-service";
 import { sanitizeString } from "@/lib/sanitize";
+import { ensureUserExists } from "@/lib/user-service";
+import { verifyBearer } from "@/lib/verifyToken";
 
 // Default categories seeded on first GET if user has none
 const DEFAULT_CATEGORIES = [
-    "Produce",
-    "Dairy",
-    "Meat & Seafood",
-    "Pantry",
-    "Bakery",
-    "Frozen",
-    "Spices & Seasonings",
-    "Canned Goods",
-    "Pasta & Grains",
-    "Condiments",
-    "Oils & Vinegars",
-    "Baking",
-    "Beverages",
-    "Other",
+  "Produce",
+  "Dairy",
+  "Meat & Seafood",
+  "Pantry",
+  "Bakery",
+  "Frozen",
+  "Spices & Seasonings",
+  "Canned Goods",
+  "Pasta & Grains",
+  "Condiments",
+  "Oils & Vinegars",
+  "Baking",
+  "Beverages",
+  "Other",
 ];
 
 const OTHER_CATEGORY = "Other";
 
 // GET /api/grocery/categories — List user's categories (return defaults if none exist)
 export async function GET(req: NextRequest) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
 
-        await ensureUserExists(p.sub);
+    await ensureUserExists(p.sub);
 
-        let categories = await prisma.groceryCategory.findMany({
-            where: { userId: p.sub },
-            orderBy: { sortOrder: "asc" },
-        });
+    let categories = await prisma.groceryCategory.findMany({
+      where: { userId: p.sub },
+      orderBy: { sortOrder: "asc" },
+    });
 
-        // Seed default categories if user has none
-        if (categories.length === 0) {
-            await prisma.groceryCategory.createMany({
-                data: DEFAULT_CATEGORIES.map((name, index) => ({
-                    userId: p.sub,
-                    name,
-                    sortOrder: index,
-                })),
-            });
+    // Seed default categories if user has none
+    if (categories.length === 0) {
+      await prisma.groceryCategory.createMany({
+        data: DEFAULT_CATEGORIES.map((name, index) => ({
+          userId: p.sub,
+          name,
+          sortOrder: index,
+        })),
+      });
 
-            categories = await prisma.groceryCategory.findMany({
-                where: { userId: p.sub },
-                orderBy: { sortOrder: "asc" },
-            });
-        }
-
-        if (!categories.some((cat) => cat.name === OTHER_CATEGORY)) {
-            const maxSortOrder = categories.at(-1)?.sortOrder ?? -1;
-            await prisma.groceryCategory.create({
-                data: {
-                    userId: p.sub,
-                    name: OTHER_CATEGORY,
-                    sortOrder: maxSortOrder + 1,
-                },
-            });
-
-            categories = await prisma.groceryCategory.findMany({
-                where: { userId: p.sub },
-                orderBy: { sortOrder: "asc" },
-            });
-        }
-
-        return NextResponse.json({
-            ok: true,
-            categories: categories.map((cat) => ({
-                id: cat.id,
-                name: cat.name,
-                sortOrder: cat.sortOrder,
-            })),
-            count: categories.length,
-        });
-    } catch (error) {
-        return handleRouteError(error, "Error in GET /api/grocery/categories:");
+      categories = await prisma.groceryCategory.findMany({
+        where: { userId: p.sub },
+        orderBy: { sortOrder: "asc" },
+      });
     }
+
+    if (!categories.some((cat) => cat.name === OTHER_CATEGORY)) {
+      const maxSortOrder = categories.at(-1)?.sortOrder ?? -1;
+      await prisma.groceryCategory.create({
+        data: {
+          userId: p.sub,
+          name: OTHER_CATEGORY,
+          sortOrder: maxSortOrder + 1,
+        },
+      });
+
+      categories = await prisma.groceryCategory.findMany({
+        where: { userId: p.sub },
+        orderBy: { sortOrder: "asc" },
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      categories: categories.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        sortOrder: cat.sortOrder,
+      })),
+      count: categories.length,
+    });
+  } catch (error) {
+    return handleRouteError(error, "Error in GET /api/grocery/categories:");
+  }
 }
 
 // POST /api/grocery/categories — Add new category
 export async function POST(req: NextRequest) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const body = await req.json();
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const body = await req.json();
 
-        if (!body.name) {
-            return errorResponse(400, "Missing required field: name");
-        }
-
-        const name = sanitizeString(body.name, 100);
-
-        // Check if category already exists
-        const existing = await prisma.groceryCategory.findFirst({
-            where: { userId: p.sub, name },
-        });
-
-        if (existing) {
-            return errorResponse(409, "Category already exists");
-        }
-
-        // Get max sortOrder to append at end
-        const maxSort = await prisma.groceryCategory.findFirst({
-            where: { userId: p.sub },
-            orderBy: { sortOrder: "desc" },
-            select: { sortOrder: true },
-        });
-
-        const category = await prisma.groceryCategory.create({
-            data: {
-                userId: p.sub,
-                name,
-                sortOrder: (maxSort?.sortOrder ?? -1) + 1,
-            },
-        });
-
-        return NextResponse.json({
-            ok: true,
-            message: "Category added",
-            category: {
-                id: category.id,
-                name: category.name,
-                sortOrder: category.sortOrder,
-            },
-        });
-    } catch (error) {
-        return handleRouteError(error, "Error in POST /api/grocery/categories:");
+    if (!body.name) {
+      return errorResponse(400, "Missing required field: name");
     }
+
+    const name = sanitizeString(body.name, 100);
+
+    // Check if category already exists
+    const existing = await prisma.groceryCategory.findFirst({
+      where: { userId: p.sub, name },
+    });
+
+    if (existing) {
+      return errorResponse(409, "Category already exists");
+    }
+
+    // Get max sortOrder to append at end
+    const maxSort = await prisma.groceryCategory.findFirst({
+      where: { userId: p.sub },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
+
+    const category = await prisma.groceryCategory.create({
+      data: {
+        userId: p.sub,
+        name,
+        sortOrder: (maxSort?.sortOrder ?? -1) + 1,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: "Category added",
+      category: {
+        id: category.id,
+        name: category.name,
+        sortOrder: category.sortOrder,
+      },
+    });
+  } catch (error) {
+    return handleRouteError(error, "Error in POST /api/grocery/categories:");
+  }
 }
 
 // DELETE /api/grocery/categories?name= — Remove category (reassign items to first remaining)
 export async function DELETE(req: NextRequest) {
-    try {
-        const p = await verifyBearer(req.headers.get("authorization") || undefined);
-        const { searchParams } = new URL(req.url);
-        const name = searchParams.get("name");
+  try {
+    const p = await verifyBearer(req.headers.get("authorization") || undefined);
+    const { searchParams } = new URL(req.url);
+    const name = searchParams.get("name");
 
-        if (!name) {
-            return errorResponse(400, "Missing required param: name");
-        }
-
-        if (name === OTHER_CATEGORY) {
-            return errorResponse(400, "The Other category cannot be deleted");
-        }
-
-        // Find the category to delete
-        const categoryToDelete = await prisma.groceryCategory.findFirst({
-            where: { userId: p.sub, name },
-        });
-
-        if (!categoryToDelete) {
-            return errorResponse(404, "Category not found");
-        }
-
-        const otherCategory = await prisma.groceryCategory.findFirst({
-            where: { userId: p.sub, name: OTHER_CATEGORY },
-        });
-
-        if (!otherCategory) {
-            const maxSort = await prisma.groceryCategory.findFirst({
-                where: { userId: p.sub },
-                orderBy: { sortOrder: "desc" },
-                select: { sortOrder: true },
-            });
-
-            await prisma.groceryCategory.create({
-                data: {
-                    userId: p.sub,
-                    name: OTHER_CATEGORY,
-                    sortOrder: (maxSort?.sortOrder ?? -1) + 1,
-                },
-            });
-        }
-
-        // Reassign items in deleted category to Other across grocery + pantry
-        await prisma.groceryItem.updateMany({
-            where: { userId: p.sub, category: name },
-            data: { category: OTHER_CATEGORY },
-        });
-
-        await prisma.pantryItem.updateMany({
-            where: { userId: p.sub, category: name },
-            data: { category: OTHER_CATEGORY },
-        });
-
-        // Delete the category
-        await prisma.groceryCategory.delete({
-            where: { id: categoryToDelete.id },
-        });
-
-        return NextResponse.json({
-            ok: true,
-            message: "Category deleted",
-            reassignedTo: OTHER_CATEGORY,
-        });
-    } catch (error) {
-        return handleRouteError(error, "Error in DELETE /api/grocery/categories:");
+    if (!name) {
+      return errorResponse(400, "Missing required param: name");
     }
+
+    if (name === OTHER_CATEGORY) {
+      return errorResponse(400, "The Other category cannot be deleted");
+    }
+
+    // Find the category to delete
+    const categoryToDelete = await prisma.groceryCategory.findFirst({
+      where: { userId: p.sub, name },
+    });
+
+    if (!categoryToDelete) {
+      return errorResponse(404, "Category not found");
+    }
+
+    const otherCategory = await prisma.groceryCategory.findFirst({
+      where: { userId: p.sub, name: OTHER_CATEGORY },
+    });
+
+    if (!otherCategory) {
+      const maxSort = await prisma.groceryCategory.findFirst({
+        where: { userId: p.sub },
+        orderBy: { sortOrder: "desc" },
+        select: { sortOrder: true },
+      });
+
+      await prisma.groceryCategory.create({
+        data: {
+          userId: p.sub,
+          name: OTHER_CATEGORY,
+          sortOrder: (maxSort?.sortOrder ?? -1) + 1,
+        },
+      });
+    }
+
+    // Reassign items in deleted category to Other across grocery + pantry
+    await prisma.groceryItem.updateMany({
+      where: { userId: p.sub, category: name },
+      data: { category: OTHER_CATEGORY },
+    });
+
+    await prisma.pantryItem.updateMany({
+      where: { userId: p.sub, category: name },
+      data: { category: OTHER_CATEGORY },
+    });
+
+    // Delete the category
+    await prisma.groceryCategory.delete({
+      where: { id: categoryToDelete.id },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: "Category deleted",
+      reassignedTo: OTHER_CATEGORY,
+    });
+  } catch (error) {
+    return handleRouteError(error, "Error in DELETE /api/grocery/categories:");
+  }
 }

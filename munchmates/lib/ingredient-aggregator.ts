@@ -5,8 +5,8 @@
 // - Pools together items by type and category
 // - Produces human readable final output with reasonable units
 
-import { WeeklyMealPlan, MealPlanEntry, AggregatedIngredient } from './types/meal-plan';
-import { consolidateIngredients } from './grocery-consolidation';
+import { consolidateIngredients } from "./grocery-consolidation";
+import type { AggregatedIngredient, MealPlanEntry, WeeklyMealPlan } from "./types/meal-plan";
 
 // ExtendedIngredient type (copied from spoonacular.ts to avoid importing server-side code)
 interface ExtendedIngredient {
@@ -31,40 +31,40 @@ interface RecipeInfo {
 
 // Solution 1: Common staples most people always have at home
 const EXCLUDED_STAPLES: Set<string> = new Set([
-  'salt',
-  'pepper',
-  'black pepper',
-  'water',
-  'ice',
-  'cooking spray',
-  'nonstick cooking spray',
-  'non-stick cooking spray',
+  "salt",
+  "pepper",
+  "black pepper",
+  "water",
+  "ice",
+  "cooking spray",
+  "nonstick cooking spray",
+  "non-stick cooking spray",
 ]);
 
 // Solution 2: Map variant names to canonical names for deduplication
 const INGREDIENT_ALIASES: Record<string, string> = {
-  'sea salt': 'salt',
-  'kosher salt': 'salt',
-  'table salt': 'salt',
-  'coarse salt': 'salt',
-  'fine salt': 'salt',
-  'flaky salt': 'salt',
-  'pinch salt': 'salt',
-  'salt or': 'salt',
-  'freshly cracked pepper': 'black pepper',
-  'ground pepper': 'black pepper',
-  'freshly ground pepper': 'black pepper',
-  'cracked pepper': 'black pepper',
-  'freshly ground black pepper': 'black pepper',
-  'ground black pepper': 'black pepper',
+  "sea salt": "salt",
+  "kosher salt": "salt",
+  "table salt": "salt",
+  "coarse salt": "salt",
+  "fine salt": "salt",
+  "flaky salt": "salt",
+  "pinch salt": "salt",
+  "salt or": "salt",
+  "freshly cracked pepper": "black pepper",
+  "ground pepper": "black pepper",
+  "freshly ground pepper": "black pepper",
+  "cracked pepper": "black pepper",
+  "freshly ground black pepper": "black pepper",
+  "ground black pepper": "black pepper",
 };
 
 // Compound entries where both components are staples — skip entirely
 const EXCLUDED_COMPOUNDS: Set<string> = new Set([
-  'salt and pepper',
-  'salt & pepper',
-  'salt and pepper to taste',
-  'salt & pepper to taste',
+  "salt and pepper",
+  "salt & pepper",
+  "salt and pepper to taste",
+  "salt & pepper to taste",
 ]);
 
 // Solution 4: Patterns indicating non-quantified / trivial ingredients
@@ -99,47 +99,62 @@ async function fetchRecipeInfo(recipeId: number): Promise<RecipeInfo | null> {
 function mapAisleToCategory(aisle: string): string {
   const lowerAisle = aisle.toLowerCase();
 
-  if (lowerAisle.includes('produce') || lowerAisle.includes('vegetable') || lowerAisle.includes('fruit')) {
-    return 'Produce';
+  if (
+    lowerAisle.includes("produce") ||
+    lowerAisle.includes("vegetable") ||
+    lowerAisle.includes("fruit")
+  ) {
+    return "Produce";
   }
-  if (lowerAisle.includes('dairy') || lowerAisle.includes('milk') || lowerAisle.includes('cheese') || lowerAisle.includes('egg')) {
-    return 'Dairy';
+  if (
+    lowerAisle.includes("dairy") ||
+    lowerAisle.includes("milk") ||
+    lowerAisle.includes("cheese") ||
+    lowerAisle.includes("egg")
+  ) {
+    return "Dairy";
   }
-  if (lowerAisle.includes('meat') || lowerAisle.includes('seafood') || lowerAisle.includes('poultry')) {
-    return 'Meat & Seafood';
+  if (
+    lowerAisle.includes("meat") ||
+    lowerAisle.includes("seafood") ||
+    lowerAisle.includes("poultry")
+  ) {
+    return "Meat & Seafood";
   }
-  if (lowerAisle.includes('bakery') || lowerAisle.includes('bread')) {
-    return 'Bakery';
+  if (lowerAisle.includes("bakery") || lowerAisle.includes("bread")) {
+    return "Bakery";
   }
-  if (lowerAisle.includes('frozen')) {
-    return 'Frozen';
+  if (lowerAisle.includes("frozen")) {
+    return "Frozen";
   }
-  if (lowerAisle.includes('spice') || lowerAisle.includes('seasoning')) {
-    return 'Spices & Seasonings';
+  if (lowerAisle.includes("spice") || lowerAisle.includes("seasoning")) {
+    return "Spices & Seasonings";
   }
-  if (lowerAisle.includes('canned') || lowerAisle.includes('jarred')) {
-    return 'Canned Goods';
+  if (lowerAisle.includes("canned") || lowerAisle.includes("jarred")) {
+    return "Canned Goods";
   }
-  if (lowerAisle.includes('pasta') || lowerAisle.includes('rice') || lowerAisle.includes('grain')) {
-    return 'Pasta & Grains';
+  if (lowerAisle.includes("pasta") || lowerAisle.includes("rice") || lowerAisle.includes("grain")) {
+    return "Pasta & Grains";
   }
-  if (lowerAisle.includes('condiment') || lowerAisle.includes('sauce')) {
-    return 'Condiments';
+  if (lowerAisle.includes("condiment") || lowerAisle.includes("sauce")) {
+    return "Condiments";
   }
-  if (lowerAisle.includes('oil') || lowerAisle.includes('vinegar')) {
-    return 'Oils & Vinegars';
+  if (lowerAisle.includes("oil") || lowerAisle.includes("vinegar")) {
+    return "Oils & Vinegars";
   }
-  if (lowerAisle.includes('baking')) {
-    return 'Baking';
+  if (lowerAisle.includes("baking")) {
+    return "Baking";
   }
-  if (lowerAisle.includes('beverage') || lowerAisle.includes('drink')) {
-    return 'Beverages';
+  if (lowerAisle.includes("beverage") || lowerAisle.includes("drink")) {
+    return "Beverages";
   }
 
-  return 'Pantry';
+  return "Pantry";
 }
 
-export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<AggregatedIngredient[]> {
+export async function aggregateIngredients(
+  weekPlan: WeeklyMealPlan,
+): Promise<AggregatedIngredient[]> {
   // Collect all recipe IDs from the week plan
   const recipeEntries: MealPlanEntry[] = [];
 
@@ -170,7 +185,7 @@ export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<Ag
             title: info.title,
           });
         }
-      })
+      }),
     );
     // Small delay between batches to avoid rate limiting
     if (i + BATCH_SIZE < uniqueRecipeIds.length) {
@@ -215,8 +230,8 @@ export async function aggregateIngredients(weekPlan: WeeklyMealPlan): Promise<Ag
       if (isToTaste(ingredient.originalString)) continue;
 
       const adjustedAmount = (ingredient.amount || 0) * servingMultiplier;
-      const unit = ingredient.unit || ingredient.unitShort || ingredient.unitLong || '';
-      const category = mapAisleToCategory(ingredient.aisle || 'Pantry');
+      const unit = ingredient.unit || ingredient.unitShort || ingredient.unitLong || "";
+      const category = mapAisleToCategory(ingredient.aisle || "Pantry");
       const displayName = INGREDIENT_ALIASES[ingredient.name.toLowerCase().trim()]
         ? key
         : ingredient.name;

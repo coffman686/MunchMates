@@ -5,7 +5,9 @@
  * Returns "" when the input is null, undefined, or whitespace.
  */
 export function sanitizeString(value: unknown, maxLength: number): string {
-    return String(value ?? "").trim().slice(0, maxLength);
+  return String(value ?? "")
+    .trim()
+    .slice(0, maxLength);
 }
 
 /**
@@ -13,8 +15,8 @@ export function sanitizeString(value: unknown, maxLength: number): string {
  * convenient for nullable DB columns.
  */
 export function sanitizeOptionalString(value: unknown, maxLength: number): string | null {
-    const trimmed = sanitizeString(value, maxLength);
-    return trimmed || null;
+  const trimmed = sanitizeString(value, maxLength);
+  return trimmed || null;
 }
 
 /**
@@ -22,6 +24,6 @@ export function sanitizeOptionalString(value: unknown, maxLength: number): strin
  * is missing, non-finite, zero, or negative. Truncates fractions.
  */
 export function parsePositiveInt(value: unknown): number | null {
-    const n = typeof value === "number" ? value : Number(value);
-    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
 }

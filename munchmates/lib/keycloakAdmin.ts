@@ -12,24 +12,24 @@ const clientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET!;
  * Creates an authenticated Keycloak admin client for each call.
  */
 export async function getAdminClient() {
-    const kcAdmin = new KcAdminClient({
-        baseUrl,
-        realmName,
-    });
+  const kcAdmin = new KcAdminClient({
+    baseUrl,
+    realmName,
+  });
 
-    await kcAdmin.auth({
-        grantType: "client_credentials",
-        clientId,
-        clientSecret,
-    });
+  await kcAdmin.auth({
+    grantType: "client_credentials",
+    clientId,
+    clientSecret,
+  });
 
-    return kcAdmin;
+  return kcAdmin;
 }
 
 /**
  * Delete a user by Keycloak user ID (sub in access token).
  */
 export async function deleteUserById(userId: string) {
-    const admin = await getAdminClient();
-    await admin.users.del({ id: userId });
+  const admin = await getAdminClient();
+  await admin.users.del({ id: userId });
 }

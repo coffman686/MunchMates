@@ -5,12 +5,12 @@
 // - Existing recipes can be dropped into an empty slot
 // - Currently holds 3 time slots for meals
 
-'use client';
+"use client";
 
-import { useDroppable } from '@dnd-kit/core';
-import { MealPlanEntry, MealType } from '@/lib/types/meal-plan';
-import { Plus } from 'lucide-react';
-import DraggableRecipeCard from './DraggableRecipeCard';
+import { useDroppable } from "@dnd-kit/core";
+import { Plus } from "lucide-react";
+import type { MealPlanEntry, MealType } from "@/lib/types/meal-plan";
+import DraggableRecipeCard from "./DraggableRecipeCard";
 
 interface MealSlotProps {
   dayDate: string;
@@ -42,10 +42,10 @@ export default function MealSlot({
         ref={setNodeRef}
         className={`flex-1 rounded-xl p-1 transition-all ${
           isOver
-            ? 'bg-primary/10 ring-2 ring-primary/30 scale-[1.02]'
+            ? "bg-primary/10 ring-2 ring-primary/30 scale-[1.02]"
             : entry
-              ? ''
-              : 'border-2 border-dashed border-border/40 hover:border-border/60 hover:bg-muted/20'
+              ? ""
+              : "border-2 border-dashed border-border/40 hover:border-border/60 hover:bg-muted/20"
         }`}
       >
         {entry ? (
@@ -56,6 +56,7 @@ export default function MealSlot({
           />
         ) : (
           <button
+            type="button"
             onClick={onAddRecipe}
             className="w-full min-h-[52px] flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors group"
           >
