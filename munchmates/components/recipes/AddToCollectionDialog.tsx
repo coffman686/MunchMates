@@ -1,6 +1,13 @@
 // AddToCollectionDialog.tsx
-// Dialog to add a recipe to an existing shared collection
+// Dialog to add or remove a recipe from shared collections
 // Exports useAddToCollection hook for controlling dialog open/close state
+//
+// Features:
+// - Shows all shared collections
+// - Pre-selects collections that already contain the recipe
+// - Allows user to add the recipe to new collections (by checking)
+// - Allows user to remove the recipe from collections (by unchecking)
+// - Submits all changes in one action
 
 'use client';
 
@@ -18,9 +25,11 @@ import {
 } from '@/components/ui/dialog';
 
 type Recipe = { id: number; title: string; image?: string | null };
-type Collection = { id: string; name: string };
-
-let cachedCollections: Collection[] | null = null;
+type Collection = {
+    id: string;
+    name: string;
+    recipes?: { recipeId: number }[];
+};
 
 export function useAddToCollection() {
     const [isOpen, setIsOpen] = useState(false);
@@ -44,9 +53,17 @@ interface AddToCollectionDialogProps {
     recipe: { id: number; title: string; image?: string | null } | null;
 }
 
+function arraysEqual(a: string[], b: string[]) {
+    if (a.length !== b.length) return false;
+    const aSorted = [...a].sort();
+    const bSorted = [...b].sort();
+    return aSorted.every((id, i) => id === bSorted[i]);
+}
+
 export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: AddToCollectionDialogProps) {
-    const [collections, setCollections] = useState<Collection[]>(cachedCollections ?? []);
-    const [selectedId, setSelectedId] = useState('');
+    const [collections, setCollections] = useState<Collection[]>([]);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [initialSelectedIds, setInitialSelectedIds] = useState<string[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [isLoadingCollections, setIsLoadingCollections] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -54,15 +71,24 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
     // Reset status when dialog opens/closes or selection changes
     useEffect(() => {
         if (isOpen) setStatus(null);
+        if (!isOpen) {
+            setSelectedIds([]);
+            setInitialSelectedIds([]);
+        }
     }, [isOpen]);
+
+    // When collections or recipe changes, pre-select collections that already have the recipe
+    useEffect(() => {
+        if (!recipe || !collections.length) return;
+        const alreadyIn = collections.filter(c =>
+            c.recipes && c.recipes.some(r => r.recipeId === recipe.id)
+        ).map(c => c.id);
+        setSelectedIds(alreadyIn);
+        setInitialSelectedIds(alreadyIn);
+    }, [collections, recipe]);
 
     useEffect(() => {
         if (!isOpen) return;
-
-        if (cachedCollections !== null) {
-            setCollections(cachedCollections);
-            return;
-        }
 
         let cancelled = false;
         const load = async () => {
@@ -75,9 +101,6 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
                     if (!cancelled) {
                         setCollections(list);
                     }
-
-                    // Cache only non-empty results so we can re-check if user creates their first collection.
-                    cachedCollections = list.length > 0 ? list : null;
                 } else if (!cancelled) {
                     setStatus({ type: 'error', message: 'Unable to load collections. Please try again.' });
                 }
@@ -100,46 +123,93 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
     }, [isOpen]);
 
     const handleAdd = async () => {
-        if (!recipe || !selectedId) return;
+        if (!recipe) return;
         setIsAdding(true);
         setStatus(null);
-        try {
-            const res = await authedFetch(`/api/shared-collections/${selectedId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'addRecipe',
-                    recipeId: recipe.id,
-                    recipeName: recipe.title,
-                    recipeImage: recipe.image || null,
-                }),
-            });
-            if (res.ok) {
-                const collectionName = collections.find(c => c.id === selectedId)?.name || 'collection';
-                setStatus({ type: 'success', message: `Added "${recipe.title}" to ${collectionName}` });
-                setSelectedId('');
-                // Auto-close after a short delay so the user sees the message
-                setTimeout(() => onOpenChange(false), 1500);
-            } else {
-                const data = await res.json().catch(() => ({}));
-                const msg = data?.error?.message || data?.message || 'Failed to add recipe to collection';
-                setStatus({ type: 'error', message: typeof msg === 'string' ? msg : 'Failed to add recipe' });
+        let successCount = 0;
+        let errorCount = 0;
+        const errorMessages: string[] = [];
+
+        // Add to newly selected collections
+        const toAdd = selectedIds.filter(id => !initialSelectedIds.includes(id));
+        // Remove from collections that were initially selected but are now unselected
+        const toRemove = initialSelectedIds.filter(id => !selectedIds.includes(id));
+
+        for (const id of toAdd) {
+            try {
+                const res = await authedFetch(`/api/shared-collections/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'addRecipe',
+                        recipeId: recipe.id,
+                        recipeName: recipe.title,
+                        recipeImage: recipe.image || null,
+                    }),
+                });
+                if (res.ok) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                    const data = await res.json().catch(() => ({}));
+                    const msg = data?.error?.message || data?.message || 'Failed to add recipe to collection';
+                    errorMessages.push(typeof msg === 'string' ? msg : 'Failed to add recipe');
+                }
+            } catch (err) {
+                errorCount++;
+                errorMessages.push('Something went wrong. Please try again.');
             }
-        } catch (err) {
-            console.error('Error adding to collection:', err);
-            setStatus({ type: 'error', message: 'Something went wrong. Please try again.' });
-        } finally {
-            setIsAdding(false);
         }
+
+        for (const id of toRemove) {
+            try {
+                const res = await authedFetch(`/api/shared-collections/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'removeRecipe',
+                        recipeId: recipe.id,
+                    }),
+                });
+                if (res.ok) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                    const data = await res.json().catch(() => ({}));
+                    const msg = data?.error?.message || data?.message || 'Failed to remove recipe from collection';
+                    errorMessages.push(typeof msg === 'string' ? msg : 'Failed to remove recipe');
+                }
+            } catch (err) {
+                errorCount++;
+                errorMessages.push('Something went wrong. Please try again.');
+            }
+        }
+
+        if (successCount > 0) {
+            let msg = '';
+            if (toAdd.length > 0) {
+                const names = collections.filter(c => toAdd.includes(c.id)).map(c => c.name).join(', ');
+                msg += `Added "${recipe.title}" to ${names}. `;
+            }
+            if (toRemove.length > 0) {
+                const names = collections.filter(c => toRemove.includes(c.id)).map(c => c.name).join(', ');
+                msg += `Removed "${recipe.title}" from ${names}.`;
+            }
+            setStatus({ type: 'success', message: msg.trim() });
+            setTimeout(() => onOpenChange(false), 1500);
+        } else if (errorCount > 0) {
+            setStatus({ type: 'error', message: errorMessages.join('; ') });
+        }
+        setIsAdding(false);
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="rounded-2xl">
                 <DialogHeader>
-                    <DialogTitle>Add to Collection</DialogTitle>
+                    <DialogTitle>Add or Remove from Collections</DialogTitle>
                     <DialogDescription>
-                        Choose a shared collection to add this recipe to.
+                        Check to add, uncheck to remove this recipe from your shared collections.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -168,20 +238,31 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
                         </p>
                     ) : (
                         <div className="space-y-2">
-                            {collections.map((c) => (
-                                <button
-                                    key={c.id}
-                                    onClick={() => { setSelectedId(c.id); setStatus(null); }}
-                                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
-                                        selectedId === c.id
-                                            ? 'border-primary bg-primary/10'
-                                            : 'hover:bg-accent/50'
-                                    }`}
-                                >
-                                    <FolderHeart className="h-4 w-4 inline-block mr-2 text-muted-foreground" />
-                                    {c.name}
-                                </button>
-                            ))}
+                            {collections.map((c) => {
+                                const isSelected = selectedIds.includes(c.id);
+                                return (
+                                    <button
+                                        key={c.id}
+                                        onClick={() => {
+                                            setSelectedIds(prev =>
+                                                prev.includes(c.id)
+                                                    ? prev.filter(id => id !== c.id)
+                                                    : [...prev, c.id]
+                                            );
+                                            setStatus(null);
+                                        }}
+                                        className={`w-full text-left px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                                            isSelected
+                                                ? 'border-primary bg-primary/10'
+                                                : 'hover:bg-accent/50'
+                                        }`}
+                                    >
+                                        <FolderHeart className="h-4 w-4 inline-block mr-2 text-muted-foreground" />
+                                        {c.name}
+                                        {isSelected && <CheckCircle2 className="h-4 w-4 inline-block ml-2 text-primary" />}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -191,7 +272,7 @@ export default function AddToCollectionDialog({ isOpen, onOpenChange, recipe }: 
                     </Button>
                     <Button
                         className="rounded-full"
-                        disabled={!selectedId || isAdding}
+                        disabled={arraysEqual(selectedIds, initialSelectedIds) || isAdding}
                         onClick={handleAdd}
                     >
                         {isAdding ? 'Adding...' : 'Add to Collection'}
