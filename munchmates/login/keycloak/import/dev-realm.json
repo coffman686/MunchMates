@@ -37,7 +37,7 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
-  "bruteForceProtected": false,
+  "bruteForceProtected": true,
   "permanentLockout": false,
   "maxTemporaryLockouts": 0,
   "bruteForceStrategy": "MULTIPLE",
@@ -46,7 +46,7 @@
   "waitIncrementSeconds": 60,
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
-  "failureFactor": 30,
+  "failureFactor": 5,
   "roles": {
     "realm": [
       {
@@ -68,12 +68,21 @@
         "attributes": {}
       },
       {
+        "id": "a1b2c3d4-0000-0000-0000-000000000001",
+        "name": "user",
+        "description": "Standard MunchMates user",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "ee0fe0a4-7b6e-4a08-89b1-af32effd4ef7",
+        "attributes": {}
+      },
+      {
         "id": "967e9775-2684-4922-97ae-1ebeb48b4a45",
         "name": "default-roles-dev",
         "description": "${role_default-roles}",
         "composite": true,
         "composites": {
-          "realm": ["offline_access", "uma_authorization"],
+          "realm": ["offline_access", "uma_authorization", "user"],
           "client": {
             "account": ["view-profile", "manage-account"]
           }
@@ -428,7 +437,7 @@
     "id": "e3cce7ae-b0ec-4361-a53c-66b35350f849",
     "clientId": "admin-permissions"
   },
-  "defaultGroups": ["/dev-admins"],
+  "defaultGroups": [],
   "requiredCredentials": ["password"],
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA1",
