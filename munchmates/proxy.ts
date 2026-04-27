@@ -1,4 +1,4 @@
-import { redis, ensureRedisConnected } from "@/lib/redis";
+import { redis, ensureRedisConnected, isRedisReady } from "@/lib/redis";
 import { type NextProxy, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/apiErrors";
 import { verifyBearer } from "@/lib/verifyToken";
@@ -6,18 +6,37 @@ import { verifyBearer } from "@/lib/verifyToken";
 // Fixed window rate limiter: 100 requests per 10 seconds per IP
 async function rateLimiter(ip: string, limit = 100, windowSec = 10) {
   await ensureRedisConnected();
-  const key = `rate_limit:${ip}`;
-  const count = await redis.incr(key);
-  if (count === 1) {
-    await redis.expire(key, windowSec);
+  if (!isRedisReady()) {
+    return {
+      success: true,
+      limit,
+      remaining: limit,
+      reset: windowSec,
+    };
   }
-  const ttl = await redis.ttl(key);
-  return {
-    success: count <= limit,
-    limit,
-    remaining: Math.max(0, limit - count),
-    reset: ttl,
-  };
+
+  const key = `rate_limit:${ip}`;
+  try {
+    const count = await redis.incr(key);
+    if (count === 1) {
+      await redis.expire(key, windowSec);
+    }
+    const ttl = await redis.ttl(key);
+    return {
+      success: count <= limit,
+      limit,
+      remaining: Math.max(0, limit - count),
+      reset: ttl,
+    };
+  } catch (error) {
+    console.warn("Redis rate limiter unavailable; allowing request:", error);
+    return {
+      success: true,
+      limit,
+      remaining: limit,
+      reset: windowSec,
+    };
+  }
 }
 
 export const proxy: NextProxy = async (req, event) => {
